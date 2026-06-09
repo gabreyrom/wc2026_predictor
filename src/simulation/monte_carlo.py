@@ -53,14 +53,20 @@ def sample_match(
     team_i: str,
     team_j: str,
     rng: np.random.Generator,
+    match_importance: float = 1.0,
 ) -> tuple[int, int]:
     """
     Sample a single scoreline (goals_i, goals_j) from the Dixon-Coles model.
     Uses inverse CDF sampling on the score matrix.
+
+    match_importance drives the per-match rho:
+        1.0 = WC group stage or knockout (default)
+        Values closer to 0 → less low-score correction
     """
     lam = model.lambda_ij(team_i, team_j)
     mu  = model.lambda_ij(team_j, team_i)
-    mat = score_matrix(lam, mu, model.rho, max_goals=7)
+    rho = model.rho_for_match(model._match_context(team_i, team_j, match_importance))
+    mat = score_matrix(lam, mu, rho, max_goals=7)
 
     flat = mat.flatten()
     flat /= flat.sum()
@@ -78,8 +84,9 @@ def sample_knockout_winner(
 ) -> str:
     """
     Sample a knockout match winner. If draw after 90 min, 50/50 shootout.
+    Passes match_importance=1.0 (WC knockout) to the rho context.
     """
-    gi, gj = sample_match(model, team_i, team_j, rng)
+    gi, gj = sample_match(model, team_i, team_j, rng, match_importance=1.0)
     if gi > gj:
         return team_i
     elif gj > gi:

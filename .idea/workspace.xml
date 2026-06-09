@@ -4,17 +4,13 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/.gitignore" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/json_assistant_history.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/material_theme_project_new.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/wc2026_predictor.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure.">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/data/features.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/features.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/model/dixon_coles.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/model/dixon_coles.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/simulation/bracket.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/simulation/bracket.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/simulation/group_stage.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/simulation/group_stage.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/simulation/monte_carlo.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/simulation/monte_carlo.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -33,6 +29,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "gabreyrom"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/gabreyrom/wc2026_predictor.git",
+    "accountId": "6ff59f56-9dc4-436a-ac1d-7dd18485adba"
+  }
+}]]></component>
   <component name="McpProjectServerCommands">
     <commands />
     <urls />
@@ -83,12 +91,25 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1781040041722</updated>
-      <workItem from="1781040042735" duration="1823000" />
+      <workItem from="1781040042735" duration="3127000" />
     </task>
+    <task id="LOCAL-00001" summary="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure.">
+      <option name="closed" value="true" />
+      <created>1781048289408</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1781048289408</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure." />
+    <option name="LAST_COMMIT_MESSAGE" value="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

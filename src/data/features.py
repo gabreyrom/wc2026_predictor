@@ -67,6 +67,7 @@ def rolling_form(
             "gf_per_game":  1.2,
             "ga_per_game":  1.2,
             "win_rate":     0.33,
+            "draw_rate":    0.25,
             "form_score":   0.0,
         }
 
@@ -82,11 +83,14 @@ def rolling_form(
     w = recent["weight"].values
     w_sum = w.sum()
 
+    recent["draw"] = (recent["pts"] == 1).astype(float)
+
     return {
         "pts_per_game": float(np.dot(w, recent["pts"]) / w_sum),
         "gf_per_game":  float(np.dot(w, recent["gf"]) / w_sum),
         "ga_per_game":  float(np.dot(w, recent["ga"]) / w_sum),
         "win_rate":     float(np.dot(w, recent["win"]) / w_sum),
+        "draw_rate":    float(np.dot(w, recent["draw"]) / w_sum),
         "form_score":   float(np.dot(w, recent["pts"] - 1.5) / w_sum),  # centered
     }
 
@@ -194,6 +198,14 @@ def build_match_features(
 
         # WC context
         "is_neutral":       1.0,  # all WC matches
+
+        # ── Rho context features (drive match-specific low-score correction) ──
+        # abs_elo_diff  : team-strength imbalance; larger → fewer draws expected
+        # draw_rate_mean: historical draw tendency of both teams combined
+        # match_importance: 0=friendly, 0.3=qualifier, 0.7=continental, 1.0=WC
+        "abs_elo_diff":     abs(elo_i - elo_j),
+        "draw_rate_mean":   (form_i["draw_rate"] + form_j["draw_rate"]) / 2,
+        "match_importance": 1.0,   # all WC matches are max importance
     }
 
     # Market odds (optional)

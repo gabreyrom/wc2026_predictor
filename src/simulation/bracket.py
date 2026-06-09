@@ -28,8 +28,11 @@ def p_win_knockout(
     """
     P(team_i beats team_j) in a knockout match (penalties if draw).
     = P(team_i wins in 90 min) + 0.5 * P(draw in 90 min)
+
+    Passes match_importance=1.0 so the model uses the WC-knockout rho,
+    which typically produces fewer 0-0/1-1 draws than group stage.
     """
-    pred = model.predict(team_i, team_j, max_goals=max_goals)
+    pred = model.predict(team_i, team_j, match_importance=1.0, max_goals=max_goals)
     return pred["home"] + 0.5 * pred["draw"]
 
 

@@ -42,15 +42,21 @@ def match_score_probs(
     model: DixonColesModel,
     home: str,
     away: str,
+    match_importance: float = 1.0,
 ) -> dict[tuple[int, int], float]:
     """
     Return a dict mapping (home_goals, away_goals) -> probability for all
     scorelines up to MAX_GOALS_SIM.
+
+    match_importance: 0=friendly … 1.0=WC knockout.
+    Group stage games default to 1.0 (WC); knockout games also use 1.0 but
+    monte_carlo.py passes the value explicitly via sample_match().
     """
+    rho = model.rho_for_match(model._match_context(home, away, match_importance))
     mat = score_matrix(
         model.lambda_ij(home, away),
         model.lambda_ij(away, home),
-        model.rho,
+        rho,
         max_goals=MAX_GOALS_SIM,
     )
     result = {}
