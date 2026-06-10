@@ -88,6 +88,104 @@ def rank_third_place_teams(third_teams: list[dict]) -> list[dict]:
     return ranked[:8]
 
 
+# ── Official FIFA 2026 Round-of-32 bracket ────────────────────────────────────
+# Source: https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_knockout_stage
+#
+# R32 match definitions. "1X"/"2X" = winner/runner-up of group X;
+# None marks a slot filled by a qualified 3rd-place team (see R32_THIRD_SLOTS).
+R32_FIXED: dict[int, tuple[str, str | None]] = {
+    73: ("2A", "2B"),  74: ("1E", None),  75: ("1F", "2C"),  76: ("1C", "2F"),
+    77: ("1I", None),  78: ("2E", "2I"),  79: ("1A", None),  80: ("1L", None),
+    81: ("1D", None),  82: ("1G", None),  83: ("2K", "2L"),  84: ("1H", "2J"),
+    85: ("1B", None),  86: ("1J", "2H"),  87: ("1K", None),  88: ("2D", "2G"),
+}
+
+# Allowed source groups for each 3rd-place slot (FIFA's allocation constraints).
+R32_THIRD_SLOTS: dict[int, frozenset[str]] = {
+    74: frozenset("ABCDF"),  77: frozenset("CDFGH"),
+    79: frozenset("CEFHI"),  80: frozenset("EHIJK"),
+    81: frozenset("BEFIJ"),  82: frozenset("AEHIJ"),
+    85: frozenset("EFGIJ"),  87: frozenset("DEIJL"),
+}
+
+# R32 matches ordered so that adjacent-pair halving reproduces the official
+# flow: R16 (89:W74-W77, 90:W73-W75, 93:W83-W84, 94:W81-W82, 91:W76-W78,
+# 92:W79-W80, 95:W86-W88, 96:W85-W87), QF (97:89-90, 98:93-94, 99:91-92,
+# 100:95-96), SF (101:97-98, 102:99-100), Final (104:101-102).
+R32_MATCH_ORDER = [74, 77, 73, 75, 83, 84, 81, 82, 76, 78, 79, 80, 86, 88, 85, 87]
+
+
+def assign_third_place_slots(qualified_groups: set[str]) -> dict[int, str]:
+    """
+    Assign the 8 qualified 3rd-place groups to the 8 bracket slots, respecting
+    FIFA's allowed-group constraints for each slot.
+
+    FIFA publishes this as a 495-row lookup table (one row per C(12,8)
+    combination); the underlying rule is a constrained perfect matching, which
+    we solve by backtracking (most-constrained slot first). FIFA designed the
+    slot lists so every combination admits at least one valid assignment.
+
+    Returns {match_number: group_letter}.
+    """
+    slots = sorted(
+        R32_THIRD_SLOTS,
+        key=lambda m: len(R32_THIRD_SLOTS[m] & qualified_groups),
+    )
+    assignment: dict[int, str] = {}
+    used: set[str] = set()
+
+    def backtrack(i: int) -> bool:
+        if i == len(slots):
+            return True
+        m = slots[i]
+        for g in sorted(R32_THIRD_SLOTS[m] & qualified_groups - used):
+            assignment[m] = g
+            used.add(g)
+            if backtrack(i + 1):
+                return True
+            del assignment[m]
+            used.discard(g)
+        return False
+
+    if not backtrack(0):
+        raise ValueError(
+            f"No valid 3rd-place assignment for groups {sorted(qualified_groups)}"
+        )
+    return assignment
+
+
+def build_r32_bracket(
+    qualifiers_by_group: dict[str, list[str]],
+    best_thirds: list[dict],
+) -> list[str]:
+    """
+    Build the 32-team R32 list in official bracket order from group results.
+
+    Args:
+        qualifiers_by_group : {group: [winner, runner_up]}
+        best_thirds         : list of dicts with 'team' and 'group' keys
+                              (the 8 qualified 3rd-place teams)
+
+    Returns a list of 32 team names; adjacent pairs play each other, and
+    iterated halving follows the official R16/QF/SF/Final flow.
+    """
+    third_by_group = {e["group"]: e["team"] for e in best_thirds}
+    slot_assignment = assign_third_place_slots(set(third_by_group))
+
+    def resolve(code: str | None, match_no: int) -> str:
+        if code is None:
+            return third_by_group[slot_assignment[match_no]]
+        pos, group = int(code[0]), code[1]
+        return qualifiers_by_group[group][pos - 1]
+
+    bracket: list[str] = []
+    for m in R32_MATCH_ORDER:
+        home, away = R32_FIXED[m]
+        bracket.append(resolve(home, m))
+        bracket.append(resolve(away, m))
+    return bracket
+
+
 # ── Single match sampler ─────────────────────────────────────────────────────
 
 def sample_match(
@@ -219,38 +317,24 @@ def simulate_tournament(
     for entry in best_thirds:
         round_reached[entry["team"]] = "R32"
 
-    # ── Build R32 bracket ─────────────────────────────────────────────────────
-    # FIFA 2026 bracket seeding: we use a simplified bracket
-    # (full bracket seeding depends on which 3rd-place teams qualify)
-    # For now: group winners on one side, runners-up + 3rd on the other
-    r32_teams = []
-    for group_name in sorted(groups.keys()):
-        r32_teams.extend(qualifiers_by_group[group_name])
-    for entry in best_thirds:
-        r32_teams.append(entry["team"])
-
-    # Shuffle 3rd-place into bracket positions (simplified)
-    current_round_teams = r32_teams[:32]
+    # ── Build R32 bracket (official FIFA 2026 structure) ─────────────────────
+    remaining = build_r32_bracket(qualifiers_by_group, best_thirds)
+    assert len(remaining) == 32
 
     # ── Knockout rounds ───────────────────────────────────────────────────────
-    round_names = ["R16", "QF", "SF", "Final"]
-    remaining = current_round_teams[:]
+    # 5 rounds: 32 → 16 → 8 → 4 → 2 → champion.
+    # Winners of each round are promoted to the NEXT round's label;
+    # losers keep the label of the round they were eliminated in.
+    advance_labels = ["R16", "QF", "SF", "Final", "Winner"]
 
-    for round_name in round_names:
+    for label in advance_labels:
         next_round = []
         for k in range(0, len(remaining), 2):
-            if k + 1 >= len(remaining):
-                next_round.append(remaining[k])
-                continue
             a, b = remaining[k], remaining[k + 1]
             winner = sample_knockout_winner(model, a, b, rng, cache=cache)
-            loser  = b if winner == a else a
-            round_reached[loser] = round_name
+            round_reached[winner] = label
             next_round.append(winner)
         remaining = next_round
-
-    if remaining:
-        round_reached[remaining[0]] = "Winner"
 
     return round_reached
 

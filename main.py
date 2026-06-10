@@ -31,7 +31,6 @@ from src.model.calibration import (
 from src.model.lgbm_calibrator import LGBMCalibrator
 from src.simulation.group_stage import simulate_all_groups, qualification_probs
 from src.simulation.monte_carlo import run_simulations, validate_against_exact
-from src.simulation.bracket import BracketPropagator, build_r32_slots_from_mc
 from src.output.results import print_prob_table, print_tournament_table, modal_bracket, save_results
 from src.output.match_report import print_match_report
 from tournament.wc2026_draw import GROUPS
@@ -108,19 +107,19 @@ def main(
     mc_results = run_simulations(GROUPS, model, n=n_mc, seed=seed)
     validate_against_exact(mc_results, exact_qual_probs)
 
-    # ── Step 6: Exact bracket propagation ────────────────────────────────────
-    print("\n[6/6] Exact bracket propagation...")
-    slots = build_r32_slots_from_mc(GROUPS, mc_results)
-    propagator = BracketPropagator(model, slots)
-    bracket_probs = propagator.reach_probs()
-
-    # Merge exact bracket probs into results for knockout rounds
-    for team, probs in bracket_probs.items():
-        for round_name, p in probs.items():
-            if round_name in ["QF", "SF", "Final", "Winner"]:
-                mask = mc_results["team"] == team
-                if mask.any() and round_name in mc_results.columns:
-                    mc_results.loc[mask, round_name] = p
+    # ── Step 6: Sanity checks on MC output ───────────────────────────────────
+    # (The previous "exact bracket propagation" overwrite was removed: its
+    #  R32 slot construction was incoherent — top-32 teams by R32 prob with
+    #  non-normalised slot probabilities — and corrupted the Winner column.
+    #  MC with the proper 5-round bracket is now the single source of truth.)
+    print("\n[6/6] Validating MC output...")
+    winner_sum = mc_results["Winner"].sum()
+    print(f"      Sum of Winner probabilities: {winner_sum:.4f} (should be ~1.0)")
+    for hi, lo in [("R32", "R16"), ("R16", "QF"), ("QF", "SF"),
+                   ("SF", "Final"), ("Final", "Winner")]:
+        violations = (mc_results[lo] > mc_results[hi] + 1e-9).sum()
+        if violations:
+            print(f"      WARNING: {violations} teams have P({lo}) > P({hi})")
 
     mc_results = mc_results.sort_values("Winner", ascending=False).reset_index(drop=True)
 
