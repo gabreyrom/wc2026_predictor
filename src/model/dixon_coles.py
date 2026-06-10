@@ -420,6 +420,13 @@ def fit(
     mask_01 = (home_goals == 0) & (away_goals == 1)
     mask_11 = (home_goals == 1) & (away_goals == 1)
 
+    # L2 regularisation strength for rho_gamma.
+    # Anchors the three rho coefficients near 0 to prevent them escaping
+    # to ±∞ in flat regions of the loss surface (which collapses rho → 0).
+    # Weight 1.0 contributes ~O(1–9) vs a log-likelihood of O(5k–15k),
+    # so it has negligible effect on α/β but keeps rho_gamma sensible.
+    RHO_L2 = 1.0
+
     def neg_log_likelihood(params: np.ndarray) -> float:
         alpha, beta, rho_gamma, lam_gamma = unpack(params)
 
@@ -451,7 +458,10 @@ def fit(
         tau_vals = np.maximum(tau_vals, 1e-10)
         log_joint = np.log(tau_vals) + log_p_home + log_p_away
 
-        return -float(np.dot(weights, log_joint))
+        # ── L2 regularisation on rho_gamma ───────────────────────────────────
+        rho_penalty = RHO_L2 * float(np.dot(rho_gamma, rho_gamma))
+
+        return -float(np.dot(weights, log_joint)) + rho_penalty
 
     # ── Initial parameters ───────────────────────────────────────────────────
     x0 = np.zeros(2 * n_teams + n_rho + n_extra)
@@ -469,11 +479,14 @@ def fit(
     # ── Optimise (all params unconstrained — sigmoid handles rho bounds) ────
     print(f"Fitting Dixon-Coles on {len(matches):,} matches, {n_teams} teams "
           f"(context-dependent rho)...")
+    # Budget: 200 * n_params function evaluations, floor 100k.
+    # For 308 teams → 619 params → 200*619 ≈ 124k evals.
+    maxfun = max(100_000, 200 * (2 * n_teams + n_rho + n_extra))
     result = minimize(
         neg_log_likelihood,
         x0,
         method="L-BFGS-B",
-        options={"maxiter": 3000, "ftol": 1e-7, "maxfun": 50000},
+        options={"maxiter": 10_000, "ftol": 1e-8, "maxfun": maxfun},
     )
 
     if not result.success:
