@@ -21,6 +21,7 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 from typing import Generator
+from tqdm import tqdm
 
 from src.model.dixon_coles import DixonColesModel, score_matrix
 
@@ -48,9 +49,8 @@ def match_score_probs(
     Return a dict mapping (home_goals, away_goals) -> probability for all
     scorelines up to MAX_GOALS_SIM.
 
-    match_importance: 0=friendly … 1.0=WC knockout.
-    Group stage games default to 1.0 (WC); knockout games also use 1.0 but
-    monte_carlo.py passes the value explicitly via sample_match().
+    Used by monte_carlo.py for inverse-CDF sampling. Not used by the exact
+    group enumeration (which uses match_outcome_probs instead).
     """
     rho = model.rho_for_match(model._match_context(home, away, match_importance))
     mat = score_matrix(
@@ -65,6 +65,60 @@ def match_score_probs(
             if mat[i, j] > 1e-8:
                 result[(i, j)] = float(mat[i, j])
     return result
+
+
+def match_outcome_probs(
+    model: DixonColesModel,
+    home: str,
+    away: str,
+    match_importance: float = 1.0,
+) -> list[tuple[str, float, float, float]]:
+    """
+    Collapse the score matrix into 3 outcomes for exact group enumeration.
+
+    Returns a list of 3 tuples:
+        (outcome, probability, exp_home_goals, exp_away_goals)
+    where outcome ∈ {'H', 'D', 'A'} and exp_*_goals are the expected
+    goal counts *conditioned on that outcome* — used for GD/GF tiebreakers.
+
+    This is O(MAX_GOALS_SIM²) per match, called once per match pair.
+    The calling code then enumerates 3^6 = 729 outcome combinations,
+    not ~50^6 ≈ 15 billion scoreline combinations.
+    """
+    rho = model.rho_for_match(model._match_context(home, away, match_importance))
+    mat = score_matrix(
+        model.lambda_ij(home, away),
+        model.lambda_ij(away, home),
+        rho,
+        max_goals=MAX_GOALS_SIM,
+    )
+
+    n = mat.shape[0]
+    idx = np.arange(n, dtype=float)
+    home_g = idx[:, None]   # (n, 1) broadcast
+    away_g = idx[None, :]   # (1, n) broadcast
+
+    win_mask  = home_g > away_g   # home wins
+    draw_mask = home_g == away_g  # draw
+    lose_mask = home_g < away_g   # away wins
+
+    def _cond(mask):
+        p = float((mat * mask).sum())
+        if p < 1e-12:
+            return p, 0.0, 0.0
+        e_h = float((mat * mask * home_g).sum()) / p
+        e_a = float((mat * mask * away_g).sum()) / p
+        return p, e_h, e_a
+
+    p_w, eh_w, ea_w = _cond(win_mask)
+    p_d, eh_d, ea_d = _cond(draw_mask)
+    p_l, eh_l, ea_l = _cond(lose_mask)
+
+    return [
+        ("H", p_w, eh_w, ea_w),   # home win
+        ("D", p_d, eh_d, ea_d),   # draw
+        ("A", p_l, eh_l, ea_l),   # away win
+    ]
 
 
 # ── Group standings ───────────────────────────────────────────────────────────
@@ -169,17 +223,21 @@ def enumerate_group(
     group_name: str,
     teams: list[str],
     model: DixonColesModel,
-) -> dict[str, dict[str, float]]:
+) -> tuple[dict[str, dict[str, float]], dict]:
     """
-    Exactly enumerate all possible outcomes for a group of 4 teams.
+    Exactly enumerate all 3^6 = 729 outcome combinations for a group of 4 teams.
 
-    For each team, returns a probability distribution over finishing positions:
-        {team: {"1st": p, "2nd": p, "3rd": p, "4th": p,
-                "pts": expected_pts, "gd": expected_gd, "gf": expected_gf,
-                "3rd_pts": P(3rd with N pts) dict}}
+    Each of the 6 matches has 3 outcomes (H/D/A). For each combination we use:
+      - Exact points from the W/D/L outcome
+      - Expected goals conditioned on outcome for GD/GF tiebreakers
 
-    NOTE: For the 8 best 3rd-place teams qualification, we also record
-    the distribution of (pts, gd, gf) for each team's 3rd-place outcomes.
+    This is O(729) per group — milliseconds per group vs. hours for full
+    scoreline enumeration (~50^6 ≈ 15 billion combinations).
+
+    Returns:
+        position_probs : {team: {"1st": p, "2nd": p, "3rd": p, "4th": p,
+                                 "exp_pts": float, "exp_gd": float, "exp_gf": float}}
+        third_place_dist: {team: {(pts, gd, gf): prob}} for 3rd-place qualification
     """
     matches = [
         (teams[i], teams[j])
@@ -187,12 +245,8 @@ def enumerate_group(
         for j in range(i + 1, len(teams))
     ]  # 6 matchups
 
-    # Precompute score distributions for each match
-    score_dists = {(h, a): match_score_probs(model, h, a) for h, a in matches}
-
-    # Enumerate all scoreline combinations
-    # Each match has a set of (score, prob) pairs
-    match_score_lists = [list(score_dists[(h, a)].items()) for h, a in matches]
+    # Precompute 3-outcome distributions for each match (fast: O(MAX_GOALS_SIM²))
+    outcome_data = [match_outcome_probs(model, h, a) for h, a in matches]
 
     # Result accumulators
     position_probs: dict[str, dict[str, float]] = {
@@ -200,54 +254,56 @@ def enumerate_group(
             "exp_pts": 0.0, "exp_gd": 0.0, "exp_gf": 0.0}
         for t in teams
     }
-    # For 3rd-place qualification: track (pts, gd, gf) distribution per team
     third_place_dist: dict[str, dict[tuple, float]] = {t: defaultdict(float) for t in teams}
 
-    total_combinations = 1
-    for scores in match_score_lists:
-        total_combinations *= len(scores)
-
-    # Iterate all combinations (product of per-match score options)
-    for combo in itertools.product(*match_score_lists):
-        # combo is a tuple of ((hg, ag), prob) for each match
+    # Enumerate 3^6 = 729 outcome combinations
+    for combo in itertools.product(*outcome_data):
+        # combo: tuple of (outcome_str, prob, exp_home_g, exp_away_g) per match
         joint_prob = 1.0
-        results: dict[tuple[str, str], tuple[int, int]] = {}
-
-        for (match_idx, ((hg, ag), p)) in enumerate(combo):
-            home, away = matches[match_idx]
+        for _, p, _, _ in combo:
             joint_prob *= p
-            results[(home, away)] = (hg, ag)
 
-        if joint_prob < 1e-12:
+        if joint_prob < 1e-15:
             continue
 
-        ranking = compute_standings(teams, results)
+        # Compute team stats for this combination
+        stats: dict[str, dict] = {t: {"pts": 0, "gd": 0.0, "gf": 0.0} for t in teams}
+        for match_idx, (outcome, _, e_hg, e_ag) in enumerate(combo):
+            home, away = matches[match_idx]
+            stats[home]["gf"] += e_hg
+            stats[home]["gd"] += e_hg - e_ag
+            stats[away]["gf"] += e_ag
+            stats[away]["gd"] += e_ag - e_hg
+            if outcome == "H":
+                stats[home]["pts"] += 3
+            elif outcome == "D":
+                stats[home]["pts"] += 1
+                stats[away]["pts"] += 1
+            else:
+                stats[away]["pts"] += 3
 
-        # Accumulate stats for each team
-        team_stats: dict[str, dict] = {t: {"pts": 0, "gd": 0, "gf": 0} for t in teams}
-        for (home, away), (hg, ag) in results.items():
-            team_stats[home]["gf"] += hg; team_stats[home]["gd"] += hg - ag
-            team_stats[away]["gf"] += ag; team_stats[away]["gd"] += ag - hg
-            if hg > ag:   team_stats[home]["pts"] += 3
-            elif hg == ag: team_stats[home]["pts"] += 1; team_stats[away]["pts"] += 1
-            else:          team_stats[away]["pts"] += 3
+        # Sort by (pts, gd, gf) — tiebreakers use expected goals
+        ranking = sorted(
+            teams,
+            key=lambda t: (stats[t]["pts"], stats[t]["gd"], stats[t]["gf"]),
+            reverse=True,
+        )
 
         for pos, team in enumerate(ranking):
             pos_name = ["1st", "2nd", "3rd", "4th"][pos]
-            position_probs[team][pos_name]    += joint_prob
-            position_probs[team]["exp_pts"]   += joint_prob * team_stats[team]["pts"]
-            position_probs[team]["exp_gd"]    += joint_prob * team_stats[team]["gd"]
-            position_probs[team]["exp_gf"]    += joint_prob * team_stats[team]["gf"]
+            position_probs[team][pos_name]  += joint_prob
+            position_probs[team]["exp_pts"] += joint_prob * stats[team]["pts"]
+            position_probs[team]["exp_gd"]  += joint_prob * stats[team]["gd"]
+            position_probs[team]["exp_gf"]  += joint_prob * stats[team]["gf"]
 
-            if pos == 2:  # 3rd place
+            if pos == 2:  # 3rd place — record (pts, gd, gf) for cross-group ranking
                 key = (
-                    team_stats[team]["pts"],
-                    team_stats[team]["gd"],
-                    team_stats[team]["gf"],
+                    stats[team]["pts"],
+                    round(stats[team]["gd"], 1),
+                    round(stats[team]["gf"], 1),
                 )
                 third_place_dist[team][key] += joint_prob
 
-    print(f"Group {group_name}: enumerated {total_combinations:,} combinations")
     return position_probs, dict(third_place_dist)
 
 
@@ -264,7 +320,7 @@ def simulate_all_groups(
     """
     all_position_probs = {}
     all_third_dists = {}
-    for group_name, teams in groups.items():
+    for group_name, teams in tqdm(groups.items(), desc="Groups", unit="group"):
         pos_probs, third_dist = enumerate_group(group_name, teams, model)
         all_position_probs[group_name] = pos_probs
         all_third_dists[group_name] = third_dist

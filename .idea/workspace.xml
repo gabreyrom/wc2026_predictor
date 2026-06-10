@@ -4,7 +4,10 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="Add parametric bootstrap for match outcome predictions and enhance match reporting" />
+    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="Update workspace configuration and add README for FIFA World Cup 2026 Predictor">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/simulation/group_stage.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/simulation/group_stage.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -84,7 +87,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1781040041722</updated>
-      <workItem from="1781040042735" duration="8132000" />
+      <workItem from="1781040042735" duration="10205000" />
     </task>
     <task id="LOCAL-00001" summary="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure.">
       <option name="closed" value="true" />
@@ -142,7 +145,15 @@
       <option name="project" value="LOCAL" />
       <updated>1781068105495</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="Update workspace configuration and add README for FIFA World Cup 2026 Predictor">
+      <option name="closed" value="true" />
+      <created>1781068376634</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1781068376634</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -155,7 +166,8 @@
     <MESSAGE value="Add LightGBM calibration layer and enhance calibration reporting" />
     <MESSAGE value="Add LightGBM calibrator for Dixon-Coles probabilities" />
     <MESSAGE value="Add parametric bootstrap for match outcome predictions and enhance match reporting" />
-    <option name="LAST_COMMIT_MESSAGE" value="Add parametric bootstrap for match outcome predictions and enhance match reporting" />
+    <MESSAGE value="Update workspace configuration and add README for FIFA World Cup 2026 Predictor" />
+    <option name="LAST_COMMIT_MESSAGE" value="Update workspace configuration and add README for FIFA World Cup 2026 Predictor" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
