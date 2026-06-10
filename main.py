@@ -22,12 +22,39 @@ import pandas as pd
 from src.data.fetch_matches import fetch_and_process
 from src.data.elo import compute_elo_ratings, save_ratings_to_csv
 from src.model.dixon_coles import fit as fit_dixon_coles
-from src.model.calibration import temporal_split, calibration_report
+from src.model.calibration import (
+    temporal_split,
+    calibration_report,
+    calibration_report_with_lgbm,
+    predict_matches,
+)
+from src.model.lgbm_calibrator import LGBMCalibrator
 from src.simulation.group_stage import simulate_all_groups, qualification_probs
 from src.simulation.monte_carlo import run_simulations, validate_against_exact
 from src.simulation.bracket import BracketPropagator, build_r32_slots_from_mc
 from src.output.results import print_prob_table, modal_bracket, save_results
 from tournament.wc2026_draw import GROUPS
+
+
+def _print_calibrated_group_odds(groups, model, calibrator) -> None:
+    """
+    Print calibrated win/draw/loss odds for every group-stage fixture.
+    Compares raw DC probabilities vs LightGBM-corrected probabilities.
+    """
+    from itertools import combinations
+    print(f"\n  {'Match':36s}  {'DC: H/D/A':>16}  {'LGBM: H/D/A':>16}")
+    print("  " + "-" * 72)
+    for group_name, teams in sorted(groups.items()):
+        print(f"\n  Group {group_name}")
+        for home, away in combinations(teams, 2):
+            if home not in model.alpha or away not in model.alpha:
+                continue
+            dc = model.predict(home, away, match_importance=1.0)
+            cal = calibrator.predict_proba_row(dc)
+            matchup = f"  {home} vs {away}"
+            dc_str  = f"{dc['home']:.0%}/{dc['draw']:.0%}/{dc['away']:.0%}"
+            cal_str = f"{cal['home']:.0%}/{cal['draw']:.0%}/{cal['away']:.0%}"
+            print(f"  {matchup:<36s}  {dc_str:>16}  {cal_str:>16}")
 
 
 def main(
@@ -36,6 +63,8 @@ def main(
     xi: float = 0.003,
     seed: int = 42,
     skip_calibration: bool = False,
+    skip_lgbm: bool = False,
+    save_calibrator: bool = True,
 ):
     print("=" * 60)
     print("   FIFA WORLD CUP 2026 PREDICTOR")
@@ -66,7 +95,9 @@ def main(
     model = fit_dixon_coles(fit_data, xi=xi)
     print(f"      baseline rho (zero context) = {model.rho:.4f}")
 
-    # ── Step 3.5: Temporal calibration ───────────────────────────────────────
+    # ── Step 3.5 & 3.7: Temporal calibration + LightGBM calibration layer ────
+    calibrator: LGBMCalibrator | None = None
+
     if not skip_calibration:
         print("\n[3.5/6] Running temporal cross-validation...")
         _, val, test = temporal_split(
@@ -75,6 +106,14 @@ def main(
             test_start="2022-01-01",
         )
         calibration_report(model, val, test)
+
+        # ── Step 3.7: LightGBM calibration layer ─────────────────────────────
+        if not skip_lgbm:
+            print("\n[3.7/6] Fitting LightGBM calibration layer...")
+            _, calibrator = calibration_report_with_lgbm(model, val, test)
+
+            if save_calibrator:
+                calibrator.save("models/lgbm_calibrator.joblib")
 
     # ── Step 4: Exact group stage ────────────────────────────────────────────
     print("\n[4/6] Exact group stage enumeration (3^6 per group)...")
@@ -107,8 +146,13 @@ def main(
     modal_bracket(GROUPS, group_pos_probs, mc_results)
     save_results(mc_results)
 
+    # ── Optional: show calibrated group-stage match odds ─────────────────────
+    if calibrator is not None:
+        print("\n[Bonus] Calibrated match odds for group-stage fixtures:")
+        _print_calibrated_group_odds(GROUPS, model, calibrator)
+
     print("\nDone.")
-    return mc_results, model, group_pos_probs
+    return mc_results, model, group_pos_probs, calibrator
 
 
 if __name__ == "__main__":
@@ -121,7 +165,11 @@ if __name__ == "__main__":
                         help="Number of Monte Carlo simulations")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--skip-calibration", action="store_true",
-                        help="Skip temporal cross-validation (faster run)")
+                        help="Skip temporal cross-validation and LightGBM (faster run)")
+    parser.add_argument("--skip-lgbm", action="store_true",
+                        help="Run DC calibration report but skip LightGBM fitting")
+    parser.add_argument("--no-save-calibrator", action="store_true",
+                        help="Do not save the fitted LightGBM calibrator to disk")
     args = parser.parse_args()
 
     main(
@@ -129,4 +177,6 @@ if __name__ == "__main__":
         n_mc=args.n_mc,
         seed=args.seed,
         skip_calibration=args.skip_calibration,
+        skip_lgbm=args.skip_lgbm,
+        save_calibrator=not args.no_save_calibrator,
     )

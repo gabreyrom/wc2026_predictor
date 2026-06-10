@@ -90,10 +90,25 @@ def predict_matches(
 
     Returns a DataFrame with columns:
         home_team, away_team, date, tournament_category,
-        p_home, p_draw, p_away,   — model probabilities
-        actual,                   — 'home' | 'draw' | 'away'
-        log_loss                  — per-match contribution
+        p_home, p_draw, p_away,       — raw DC probabilities
+        lambda_i, mu_j,               — expected goals
+        rho,                          — match-specific rho
+        abs_alpha_diff,               — |alpha_home - alpha_away|
+        match_importance,             — importance scale used
+        actual,                       — 'home' | 'draw' | 'away'
+        log_loss                      — per-match log-loss contribution
+
+    The extra columns (lambda_i, mu_j, abs_alpha_diff, match_importance)
+    are consumed by LGBMCalibrator.fit() / predict_proba_df().
     """
+    IMPORTANCE_MAP = {
+        "World Cup":                1.0,
+        "Continental Championship": 0.7,
+        "World Cup Qualifier":      0.3,
+        "Continental Qualifier":    0.3,
+        "Friendly":                 0.0,
+    }
+
     rows = []
     for _, row in matches.iterrows():
         home = row["home_team"]
@@ -104,13 +119,7 @@ def predict_matches(
             continue
 
         # Use tournament_category to set match_importance
-        imp = {
-            "World Cup":                1.0,
-            "Continental Championship": 0.7,
-            "World Cup Qualifier":      0.3,
-            "Continental Qualifier":    0.3,
-            "Friendly":                 0.0,
-        }.get(row.get("tournament_category", "Friendly"), 0.0)
+        imp = IMPORTANCE_MAP.get(row.get("tournament_category", "Friendly"), 0.0)
 
         pred = model.predict(home, away, match_importance=imp)
         actual = _outcome(row)
@@ -126,7 +135,13 @@ def predict_matches(
             "p_home":              pred["home"],
             "p_draw":              pred["draw"],
             "p_away":              pred["away"],
+            "lambda_i":            pred["lambda_i"],
+            "mu_j":                pred["mu_j"],
             "rho":                 pred["rho"],
+            "abs_alpha_diff":      abs(
+                model.alpha.get(home, 0.0) - model.alpha.get(away, 0.0)
+            ),
+            "match_importance":    imp,
             "actual":              actual,
             "log_loss":            ll,
         })
@@ -309,6 +324,108 @@ def hyperparameter_search(
     print("\n  Best hyperparameters:")
     print(df.head(5).to_string(index=False))
     return df
+
+
+# ── LightGBM calibration layer report ────────────────────────────────────────
+
+def calibration_report_with_lgbm(
+    model: DixonColesModel,
+    val: pd.DataFrame,
+    test: pd.DataFrame,
+) -> tuple[dict, "LGBMCalibrator"]:  # type: ignore[name-defined]
+    """
+    Fit a LightGBM calibrator on validation-set DC predictions, then compare
+    DC-alone vs DC+LGBM log-loss on the held-out test set.
+
+    Training data  : val predictions (model never saw these during DC fitting)
+    Evaluation data: test predictions (LightGBM never saw these)
+
+    Returns
+    -------
+    results    : dict with keys 'dc_val', 'dc_test', 'lgbm_val', 'lgbm_test'
+                 each mapping to {'log_loss': float, 'n': int}
+    calibrator : fitted LGBMCalibrator (ready to save / use in production)
+    """
+    # Lazy import to avoid hard dependency at module load time
+    from src.model.lgbm_calibrator import LGBMCalibrator
+
+    print("\n" + "=" * 62)
+    print(f"{'LGBM CALIBRATION COMPARISON':^62}")
+    print("=" * 62)
+    print(f"  Baseline (uniform 1/3): {BASELINE_LOG_LOSS:.4f}")
+
+    # ── 1. DC predictions on both splits ────────────────────────────────────
+    print("\n  Running Dixon-Coles predictions on val + test sets...")
+    val_pred_df  = predict_matches(model, val)
+    test_pred_df = predict_matches(model, test)
+
+    dc_val_ll  = log_loss_score(val_pred_df)
+    dc_test_ll = log_loss_score(test_pred_df)
+
+    print(f"  DC  val  log-loss: {dc_val_ll:.4f}  (n={len(val_pred_df):,})")
+    print(f"  DC  test log-loss: {dc_test_ll:.4f}  (n={len(test_pred_df):,})")
+
+    # ── 2. Fit LGBM on val predictions ──────────────────────────────────────
+    print(f"\n  Fitting LGBMCalibrator on {len(val_pred_df):,} val predictions...")
+    calibrator = LGBMCalibrator()
+    calibrator.fit(val_pred_df, verbose=True)
+
+    # ── 3. Calibrated predictions on test set ───────────────────────────────
+    cal_test_df = calibrator.predict_proba_df(test_pred_df)
+    lgbm_test_ll = float(cal_test_df["cal_log_loss"].mean())
+
+    cal_val_df = calibrator.predict_proba_df(val_pred_df)
+    lgbm_val_ll = float(cal_val_df["cal_log_loss"].mean())
+
+    # ── 4. Summary table ─────────────────────────────────────────────────────
+    print(f"\n  {'Model':20s}  {'Val log-loss':>12}  {'Test log-loss':>13}  {'Δ test':>8}")
+    print("  " + "-" * 58)
+    print(f"  {'Baseline (uniform)':20s}  "
+          f"{BASELINE_LOG_LOSS:>12.4f}  {BASELINE_LOG_LOSS:>13.4f}  {'—':>8}")
+    print(f"  {'Dixon-Coles':20s}  "
+          f"{dc_val_ll:>12.4f}  {dc_test_ll:>13.4f}  {'—':>8}")
+    lgbm_delta = lgbm_test_ll - dc_test_ll
+    better = "▲ better" if lgbm_delta < -0.001 else ("▼ worse" if lgbm_delta > 0.001 else "≈ same")
+    print(f"  {'DC + LightGBM':20s}  "
+          f"{lgbm_val_ll:>12.4f}  {lgbm_test_ll:>13.4f}  "
+          f"{lgbm_delta:>+6.4f} {better}")
+
+    # ── 5. Draw calibration comparison ───────────────────────────────────────
+    print(f"\n  Draw overconfidence fix (test set):")
+    print(f"    {'Metric':30s}  {'DC':>8}  {'DC+LGBM':>9}")
+    print(f"    " + "-" * 52)
+    dc_draw_pred  = test_pred_df["p_draw"].mean()
+    cal_draw_pred = cal_test_df["cal_draw"].mean()
+    actual_draw   = (test_pred_df["actual"] == "draw").mean()
+    print(f"    {'Mean predicted draw prob':30s}  {dc_draw_pred:>8.1%}  {cal_draw_pred:>9.1%}")
+    print(f"    {'Actual draw rate':30s}  {actual_draw:>8.1%}  {actual_draw:>9.1%}")
+    print(f"    {'Draw bias (pred − actual)':30s}  "
+          f"{(dc_draw_pred - actual_draw):>+7.1%}  "
+          f"{(cal_draw_pred - actual_draw):>+8.1%}")
+
+    # ── 6. Outcome accuracy (modal prediction) ───────────────────────────────
+    print(f"\n  Outcome accuracy (modal prediction):")
+    for label, p_cols in [
+        ("Dixon-Coles",  ("p_home",   "p_draw",   "p_away")),
+        ("DC + LightGBM", ("cal_home", "cal_draw", "cal_away")),
+    ]:
+        df = cal_test_df  # both sets of cols are in cal_test_df
+        pred_col = df[[p_cols[0], p_cols[1], p_cols[2]]].idxmax(axis=1).str.replace("cal_", "").str.replace("p_", "")
+        acc = (pred_col == df["actual"]).mean()
+        draw_recall = (pred_col[df["actual"] == "draw"] == "draw").mean() if (df["actual"] == "draw").sum() > 0 else 0.0
+        print(f"    {label:20s}  acc={acc:.1%}  draw-recall={draw_recall:.1%}")
+
+    print("=" * 62)
+
+    results = {
+        "dc_val":   {"log_loss": dc_val_ll,   "n": len(val_pred_df)},
+        "dc_test":  {"log_loss": dc_test_ll,  "n": len(test_pred_df)},
+        "lgbm_val": {"log_loss": lgbm_val_ll, "n": len(val_pred_df)},
+        "lgbm_test":{"log_loss": lgbm_test_ll,"n": len(test_pred_df)},
+        "val_pred_df":  val_pred_df,
+        "test_pred_df": test_pred_df,
+    }
+    return results, calibrator
 
 
 if __name__ == "__main__":
