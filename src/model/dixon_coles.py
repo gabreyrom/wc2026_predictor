@@ -236,6 +236,109 @@ class DixonColesModel:
         """Coin-flip 50/50 for penalty shootout (after extra time draw)."""
         return 0.5
 
+    # ── Parametric bootstrap ──────────────────────────────────────────────────
+
+    def parametric_bootstrap(
+        self,
+        team_i: str,
+        team_j: str,
+        n_samples: int = 500,
+        match_importance: float = 1.0,
+        seed: Optional[int] = 42,
+    ) -> np.ndarray:
+        """
+        Return an (n_samples, 3) array of bootstrap predictions for
+        P(team_i wins), P(draw), P(team_j wins).
+
+        Method — parametric bootstrap via the L-BFGS-B approximate posterior:
+            1. Identify the 7 parameters relevant to this matchup:
+               alpha_i, beta_i, alpha_j, beta_j, rho_gamma[0,1,2]
+            2. Extract the 7×7 covariance submatrix from the L-BFGS-B
+               inverse Hessian approximation (7 matvec calls — fast).
+            3. Sample n_samples perturbations from that 7D Gaussian.
+            4. For each sample: reconstruct λ, μ, ρ and compute outcome probs.
+
+        The spread across samples reflects parameter estimation uncertainty —
+        wide for data-sparse teams (Haiti, Curaçao), narrow for top teams
+        (Brazil, France).
+
+        Returns:
+            arr[:, 0] = P(team_i wins)   — home
+            arr[:, 1] = P(draw)
+            arr[:, 2] = P(team_j wins)   — away
+        """
+        if not hasattr(self, "_hess_inv") or self._hess_inv is None:
+            raise RuntimeError(
+                "parametric_bootstrap requires the model to have been fitted "
+                "with the standard fit() function (hess_inv not stored)."
+            )
+
+        rng = np.random.default_rng(seed)
+        n_teams = self._n_teams
+        idx = self._team_idx
+
+        # Indices of the 7 relevant parameters in the full vector
+        idx_ai  = idx[team_i]                    # alpha_i
+        idx_bi  = n_teams + idx[team_i]           # beta_i
+        idx_aj  = idx[team_j]                    # alpha_j
+        idx_bj  = n_teams + idx[team_j]           # beta_j
+        idx_rg0 = 2 * n_teams                    # rho_gamma[0]
+        idx_rg1 = 2 * n_teams + 1                # rho_gamma[1]
+        idx_rg2 = 2 * n_teams + 2                # rho_gamma[2]
+
+        key_idx = [idx_ai, idx_bi, idx_aj, idx_bj, idx_rg0, idx_rg1, idx_rg2]
+        k = len(key_idx)
+
+        # ── Extract k×k covariance submatrix ─────────────────────────────────
+        # Apply the inverse Hessian operator to each of the k standard basis
+        # vectors corresponding to our key parameters. This is exact within
+        # the L-BFGS-B approximation and costs only k matvec calls.
+        n_params = len(self._theta_hat)
+        e = np.zeros(n_params)
+        sub_cov = np.zeros((k, k))
+        for col, global_col in enumerate(key_idx):
+            e[global_col] = 1.0
+            col_vec = self._hess_inv.matvec(e)
+            for row, global_row in enumerate(key_idx):
+                sub_cov[row, col] = col_vec[global_row]
+            e[global_col] = 0.0
+
+        # Symmetrise and ensure positive-definite via small jitter
+        sub_cov = (sub_cov + sub_cov.T) / 2.0
+        sub_cov += np.eye(k) * 1e-9
+
+        mean_params = self._theta_hat[key_idx]
+
+        # ── Sample parameter vectors ──────────────────────────────────────────
+        try:
+            param_samples = rng.multivariate_normal(mean_params, sub_cov, size=n_samples)
+        except np.linalg.LinAlgError:
+            # Fallback: diagonal-only if matrix is not PD even after jitter
+            stds = np.sqrt(np.maximum(np.diag(sub_cov), 1e-10))
+            param_samples = mean_params + rng.standard_normal((n_samples, k)) * stds
+
+        # ── Predict for each sample ───────────────────────────────────────────
+        results = np.empty((n_samples, 3))
+        for s, params in enumerate(param_samples):
+            ai, bi, aj, bj = params[0], params[1], params[2], params[3]
+            rg = params[4:]
+
+            # Clip exponent to avoid overflow (>4 goals expected is unrealistic)
+            lam = math.exp(float(np.clip(ai - bj, -5.0, 5.0)))
+            mu  = math.exp(float(np.clip(aj - bi, -5.0, 5.0)))
+
+            # Context-dependent rho
+            abs_diff = abs(ai - aj)
+            x_rho = rg[0] + rg[1] * abs_diff + rg[2] * match_importance
+            rho = -0.99 / (1.0 + math.exp(-float(x_rho)))
+
+            probs = outcome_probs(lam, mu, rho)
+            results[s, 0] = probs["home"]
+            results[s, 1] = probs["draw"]
+            results[s, 2] = probs["away"]
+
+        return results
+
 
 # ── MLE fitting ──────────────────────────────────────────────────────────────
 
@@ -387,6 +490,12 @@ def fit(
     model.feature_names = feature_names or []
     model.gamma         = lam_gamma_fit
     model._fitted       = True
+
+    # ── Store for parametric bootstrap ───────────────────────────────────────
+    model._theta_hat  = result.x.copy()
+    model._hess_inv   = result.hess_inv   # LbfgsInvHessProduct (lazy covariance)
+    model._team_idx   = team_idx          # {team_name: param_index}
+    model._n_teams    = n_teams
 
     # Print fitted rho at a few representative contexts
     rho_friendly = model.rho_for_match({"abs_alpha_diff": 0.0, "match_importance": 0.0})

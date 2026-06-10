@@ -32,29 +32,10 @@ from src.model.lgbm_calibrator import LGBMCalibrator
 from src.simulation.group_stage import simulate_all_groups, qualification_probs
 from src.simulation.monte_carlo import run_simulations, validate_against_exact
 from src.simulation.bracket import BracketPropagator, build_r32_slots_from_mc
-from src.output.results import print_prob_table, modal_bracket, save_results
+from src.output.results import print_prob_table, print_tournament_table, modal_bracket, save_results
+from src.output.match_report import print_match_report
 from tournament.wc2026_draw import GROUPS
 
-
-def _print_calibrated_group_odds(groups, model, calibrator) -> None:
-    """
-    Print calibrated win/draw/loss odds for every group-stage fixture.
-    Compares raw DC probabilities vs LightGBM-corrected probabilities.
-    """
-    from itertools import combinations
-    print(f"\n  {'Match':36s}  {'DC: H/D/A':>16}  {'LGBM: H/D/A':>16}")
-    print("  " + "-" * 72)
-    for group_name, teams in sorted(groups.items()):
-        print(f"\n  Group {group_name}")
-        for home, away in combinations(teams, 2):
-            if home not in model.alpha or away not in model.alpha:
-                continue
-            dc = model.predict(home, away, match_importance=1.0)
-            cal = calibrator.predict_proba_row(dc)
-            matchup = f"  {home} vs {away}"
-            dc_str  = f"{dc['home']:.0%}/{dc['draw']:.0%}/{dc['away']:.0%}"
-            cal_str = f"{cal['home']:.0%}/{cal['draw']:.0%}/{cal['away']:.0%}"
-            print(f"  {matchup:<36s}  {dc_str:>16}  {cal_str:>16}")
 
 
 def main(
@@ -65,6 +46,8 @@ def main(
     skip_calibration: bool = False,
     skip_lgbm: bool = False,
     save_calibrator: bool = True,
+    match: tuple[str, str] | None = None,
+    n_bootstrap: int = 500,
 ):
     print("=" * 60)
     print("   FIFA WORLD CUP 2026 PREDICTOR")
@@ -142,14 +125,23 @@ def main(
     mc_results = mc_results.sort_values("Winner", ascending=False).reset_index(drop=True)
 
     # ── Output ───────────────────────────────────────────────────────────────
-    print_prob_table(mc_results, top_n=32)
+    print_tournament_table(mc_results, GROUPS)
     modal_bracket(GROUPS, group_pos_probs, mc_results)
     save_results(mc_results)
 
-    # ── Optional: show calibrated group-stage match odds ─────────────────────
-    if calibrator is not None:
-        print("\n[Bonus] Calibrated match odds for group-stage fixtures:")
-        _print_calibrated_group_odds(GROUPS, model, calibrator)
+    # ── Optional: single match deep dive ─────────────────────────────────────
+    if match is not None:
+        team_i, team_j = match
+        print(f"\n{'─'*60}")
+        print(f"  MATCH REPORT: {team_i} vs {team_j}")
+        print_match_report(
+            model, team_i, team_j,
+            calibrator=calibrator,
+            n_bootstrap=n_bootstrap,
+            match_importance=1.0,
+            top_scores=3,
+            seed=seed,
+        )
 
     print("\nDone.")
     return mc_results, model, group_pos_probs, calibrator
@@ -170,6 +162,10 @@ if __name__ == "__main__":
                         help="Run DC calibration report but skip LightGBM fitting")
     parser.add_argument("--no-save-calibrator", action="store_true",
                         help="Do not save the fitted LightGBM calibrator to disk")
+    parser.add_argument("--match", nargs=2, metavar=("TEAM1", "TEAM2"),
+                        help="Print a detailed match report (e.g. --match Brazil France)")
+    parser.add_argument("--n-bootstrap", type=int, default=500,
+                        help="Bootstrap samples for match report CIs (default 500)")
     args = parser.parse_args()
 
     main(
@@ -179,4 +175,6 @@ if __name__ == "__main__":
         skip_calibration=args.skip_calibration,
         skip_lgbm=args.skip_lgbm,
         save_calibrator=not args.no_save_calibrator,
+        match=tuple(args.match) if args.match else None,
+        n_bootstrap=args.n_bootstrap,
     )

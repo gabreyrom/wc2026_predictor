@@ -144,6 +144,71 @@ def sensitivity_analysis(
     return pd.DataFrame(rows)
 
 
+# ── Tournament advancement table ─────────────────────────────────────────────
+
+def print_tournament_table(
+    mc_results: pd.DataFrame,
+    groups: dict[str, list[str]],
+    sort_by: str = "Winner",
+) -> None:
+    """
+    Print a grouped tournament advancement probability table.
+
+    Columns: Group | Team | R32 | R16 | QF | SF | Final | Winner
+
+    Teams are shown within their group (sorted by Winner prob within group),
+    then groups are ordered by the highest Winner prob team in each group.
+
+    Args:
+        mc_results : DataFrame from run_simulations() — must have ROUND_COLS
+        groups     : GROUPS dict from wc2026_draw.py
+        sort_by    : column to use for global sort (default 'Winner')
+    """
+    # Build group membership lookup
+    team_to_group: dict[str, str] = {}
+    for g, teams in groups.items():
+        for t in teams:
+            team_to_group[t] = g
+
+    # Attach group label
+    df = mc_results.copy()
+    df["Group"] = df["team"].map(team_to_group).fillna("?")
+
+    # Sort groups by best team's Winner probability
+    group_best = (
+        df.groupby("Group")[sort_by].max()
+        .sort_values(ascending=False)
+    )
+    group_order = list(group_best.index)
+
+    W = 76
+    print("\n" + "═" * W)
+    print(f"{'WC 2026 — TOURNAMENT ADVANCEMENT PROBABILITIES':^{W}}")
+    print("═" * W)
+    print(f"  {'Grp':<4} {'Team':<22} {'R32':>6} {'R16':>6} "
+          f"{'QF':>6} {'SF':>6} {'Final':>7} {'Win':>7}")
+    print("  " + "─" * (W - 2))
+
+    for g in group_order:
+        group_df = (
+            df[df["Group"] == g]
+            .sort_values(sort_by, ascending=False)
+        )
+        for _, row in group_df.iterrows():
+            team = str(row["team"])
+            # Truncate long names to fit column
+            team_display = team if len(team) <= 22 else team[:19] + "…"
+            print(
+                f"  {g:<4} {team_display:<22} "
+                f"{row['R32']:>6.1%} {row['R16']:>6.1%} "
+                f"{row['QF']:>6.1%} {row['SF']:>6.1%} "
+                f"{row['Final']:>7.1%} {row['Winner']:>7.1%}"
+            )
+        print("  " + "·" * (W - 2))   # group separator
+
+    print("═" * W)
+
+
 # ── Save to CSV ───────────────────────────────────────────────────────────────
 
 def save_results(mc_results: pd.DataFrame, path: str = "data/processed/wc2026_probs.csv") -> None:
