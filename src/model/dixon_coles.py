@@ -370,7 +370,7 @@ def fit(
         neg_log_likelihood,
         x0,
         method="L-BFGS-B",
-        options={"maxiter": 5000, "ftol": 1e-8, "maxfun": 150000},
+        options={"maxiter": 3000, "ftol": 1e-7, "maxfun": 50000},
     )
 
     if not result.success:

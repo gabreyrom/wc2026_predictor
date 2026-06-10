@@ -22,6 +22,7 @@ import pandas as pd
 from src.data.fetch_matches import fetch_and_process
 from src.data.elo import compute_elo_ratings, save_ratings_to_csv
 from src.model.dixon_coles import fit as fit_dixon_coles
+from src.model.calibration import temporal_split, calibration_report
 from src.simulation.group_stage import simulate_all_groups, qualification_probs
 from src.simulation.monte_carlo import run_simulations, validate_against_exact
 from src.simulation.bracket import BracketPropagator, build_r32_slots_from_mc
@@ -34,6 +35,7 @@ def main(
     n_mc: int = 100_000,
     xi: float = 0.003,
     seed: int = 42,
+    skip_calibration: bool = False,
 ):
     print("=" * 60)
     print("   FIFA WORLD CUP 2026 PREDICTOR")
@@ -59,9 +61,20 @@ def main(
 
     # ── Step 3: Dixon-Coles ──────────────────────────────────────────────────
     print("\n[3/6] Fitting Dixon-Coles model...")
-    fit_data = matches[matches["date"] >= "2000-01-01"].copy()
+    # Train on 2010+ — enough history, fast enough to fit
+    fit_data = matches[matches["date"] >= "2010-01-01"].copy()
     model = fit_dixon_coles(fit_data, xi=xi)
-    print(f"      rho = {model.rho:.4f}  (Dixon-Coles low-score correction)")
+    print(f"      baseline rho (zero context) = {model.rho:.4f}")
+
+    # ── Step 3.5: Temporal calibration ───────────────────────────────────────
+    if not skip_calibration:
+        print("\n[3.5/6] Running temporal cross-validation...")
+        _, val, test = temporal_split(
+            fit_data,
+            val_start="2018-01-01",
+            test_start="2022-01-01",
+        )
+        calibration_report(model, val, test)
 
     # ── Step 4: Exact group stage ────────────────────────────────────────────
     print("\n[4/6] Exact group stage enumeration (3^6 per group)...")
@@ -107,10 +120,13 @@ if __name__ == "__main__":
     parser.add_argument("--n-mc", type=int, default=100_000,
                         help="Number of Monte Carlo simulations")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--skip-calibration", action="store_true",
+                        help="Skip temporal cross-validation (faster run)")
     args = parser.parse_args()
 
     main(
         force_download=args.force_download,
         n_mc=args.n_mc,
         seed=args.seed,
+        skip_calibration=args.skip_calibration,
     )

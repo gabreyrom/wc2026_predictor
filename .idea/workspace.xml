@@ -4,13 +4,8 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure.">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/data/features.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/features.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/model/dixon_coles.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/model/dixon_coles.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/simulation/bracket.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/simulation/bracket.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/simulation/group_stage.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/simulation/group_stage.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/simulation/monte_carlo.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/simulation/monte_carlo.py" afterDir="false" />
+    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="features.py - Added draw_rate to rolling_form() output; added abs_elo_diff, draw_rate_mean, match_importance to feature dict&#10;dixon_coles.py - rho → rho_gamma[3]; new rho_for_match(); rho property for backward compat; _match_context() helper; predict() accepts match_importance; fit() estimates 3 rho coefficients via sigmoid-parameterised MLE&#10;group_stage.py - match_score_probs() calls model.rho_for_match() with group-stage context&#10;monte_carlo.py - sample_match() accepts match_importance; sample_knockout_winner() passes 1.0&#10;bracket.py - p_win_knockout() passes match_importance=1.0">
+      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -91,7 +86,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1781040041722</updated>
-      <workItem from="1781040042735" duration="3127000" />
+      <workItem from="1781040042735" duration="3678000" />
     </task>
     <task id="LOCAL-00001" summary="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure.">
       <option name="closed" value="true" />
@@ -101,7 +96,15 @@
       <option name="project" value="LOCAL" />
       <updated>1781048289408</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="features.py - Added draw_rate to rolling_form() output; added abs_elo_diff, draw_rate_mean, match_importance to feature dict&#10;dixon_coles.py - rho → rho_gamma[3]; new rho_for_match(); rho property for backward compat; _match_context() helper; predict() accepts match_importance; fit() estimates 3 rho coefficients via sigmoid-parameterised MLE&#10;group_stage.py - match_score_probs() calls model.rho_for_match() with group-stage context&#10;monte_carlo.py - sample_match() accepts match_importance; sample_knockout_winner() passes 1.0&#10;bracket.py - p_win_knockout() passes match_importance=1.0">
+      <option name="closed" value="true" />
+      <created>1781049553123</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1781049553123</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -109,14 +112,15 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure." />
-    <option name="LAST_COMMIT_MESSAGE" value="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure." />
+    <MESSAGE value="features.py - Added draw_rate to rolling_form() output; added abs_elo_diff, draw_rate_mean, match_importance to feature dict&#10;dixon_coles.py - rho → rho_gamma[3]; new rho_for_match(); rho property for backward compat; _match_context() helper; predict() accepts match_importance; fit() estimates 3 rho coefficients via sigmoid-parameterised MLE&#10;group_stage.py - match_score_probs() calls model.rho_for_match() with group-stage context&#10;monte_carlo.py - sample_match() accepts match_importance; sample_knockout_winner() passes 1.0&#10;bracket.py - p_win_knockout() passes match_importance=1.0" />
+    <option name="LAST_COMMIT_MESSAGE" value="features.py - Added draw_rate to rolling_form() output; added abs_elo_diff, draw_rate_mean, match_importance to feature dict&#10;dixon_coles.py - rho → rho_gamma[3]; new rho_for_match(); rho property for backward compat; _match_context() helper; predict() accepts match_importance; fit() estimates 3 rho coefficients via sigmoid-parameterised MLE&#10;group_stage.py - match_score_probs() calls model.rho_for_match() with group-stage context&#10;monte_carlo.py - sample_match() accepts match_importance; sample_knockout_winner() passes 1.0&#10;bracket.py - p_win_knockout() passes match_importance=1.0" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/main.py</url>
-          <line>98</line>
+          <line>110</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>
       </breakpoints>
