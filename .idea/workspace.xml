@@ -4,11 +4,7 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="Enhance Dixon-Coles model fitting and add temporal calibration&#10;&#10;- Adjusted optimization parameters in dixon_coles.py for improved fitting.&#10;- Updated main.py to include temporal calibration with optional skipping.&#10;- Introduced calibration.py for temporal cross-validation and model evaluation.">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/model/calibration.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/model/calibration.py" afterDir="false" />
-    </list>
+    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="Add LightGBM calibration layer and enhance calibration reporting" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -88,7 +84,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1781040041722</updated>
-      <workItem from="1781040042735" duration="6858000" />
+      <workItem from="1781040042735" duration="7475000" />
     </task>
     <task id="LOCAL-00001" summary="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure.">
       <option name="closed" value="true" />
@@ -122,7 +118,15 @@
       <option name="project" value="LOCAL" />
       <updated>1781062026836</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="Add LightGBM calibration layer and enhance calibration reporting">
+      <option name="closed" value="true" />
+      <created>1781066739421</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1781066739421</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -132,7 +136,8 @@
     <MESSAGE value="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure." />
     <MESSAGE value="features.py - Added draw_rate to rolling_form() output; added abs_elo_diff, draw_rate_mean, match_importance to feature dict&#10;dixon_coles.py - rho → rho_gamma[3]; new rho_for_match(); rho property for backward compat; _match_context() helper; predict() accepts match_importance; fit() estimates 3 rho coefficients via sigmoid-parameterised MLE&#10;group_stage.py - match_score_probs() calls model.rho_for_match() with group-stage context&#10;monte_carlo.py - sample_match() accepts match_importance; sample_knockout_winner() passes 1.0&#10;bracket.py - p_win_knockout() passes match_importance=1.0" />
     <MESSAGE value="Enhance Dixon-Coles model fitting and add temporal calibration&#10;&#10;- Adjusted optimization parameters in dixon_coles.py for improved fitting.&#10;- Updated main.py to include temporal calibration with optional skipping.&#10;- Introduced calibration.py for temporal cross-validation and model evaluation." />
-    <option name="LAST_COMMIT_MESSAGE" value="Enhance Dixon-Coles model fitting and add temporal calibration&#10;&#10;- Adjusted optimization parameters in dixon_coles.py for improved fitting.&#10;- Updated main.py to include temporal calibration with optional skipping.&#10;- Introduced calibration.py for temporal cross-validation and model evaluation." />
+    <MESSAGE value="Add LightGBM calibration layer and enhance calibration reporting" />
+    <option name="LAST_COMMIT_MESSAGE" value="Add LightGBM calibration layer and enhance calibration reporting" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
