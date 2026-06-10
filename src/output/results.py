@@ -56,8 +56,11 @@ def modal_bracket(
     print("=" * 60)
 
     print("\nGroup Stage — Predicted Qualifiers:")
-    print(f"{'Group':<8} {'1st':^20} {'2nd':^20} {'Best 3rd'}")
-    print("-" * 60)
+    print(f"{'Group':<8} {'1st':<20} {'2nd':<20} {'3rd (P reach R32, any route)'}")
+    print("-" * 72)
+
+    # P(reach R32) per team — includes 3rd-place qualification (from MC)
+    r32_prob = dict(zip(mc_results["team"], mc_results["R32"]))
 
     for group_name, team_probs in group_probs.items():
         sorted_teams = sorted(
@@ -70,7 +73,13 @@ def modal_bracket(
             [(t, p) for t, p in team_probs.items() if t != pred_1st],
             key=lambda x: x[1]["2nd"],
         )[0]
-        print(f"  {group_name:<6} {pred_1st:<20} {pred_2nd:<20}")
+        pred_3rd = max(
+            [(t, p) for t, p in team_probs.items() if t not in (pred_1st, pred_2nd)],
+            key=lambda x: x[1]["3rd"],
+        )[0]
+        third_qual = r32_prob.get(pred_3rd, 0.0)
+        print(f"  {group_name:<6} {pred_1st:<20} {pred_2nd:<20} "
+              f"{pred_3rd} ({third_qual:.0%})")
 
     # Knockout modal winner
     top_team = mc_results.iloc[0]
@@ -209,11 +218,63 @@ def print_tournament_table(
     print("═" * W)
 
 
-# ── Save to CSV ───────────────────────────────────────────────────────────────
+# ── Save to CSV (versioned) ───────────────────────────────────────────────────
 
-def save_results(mc_results: pd.DataFrame, path: str = "data/processed/wc2026_probs.csv") -> None:
-    mc_results.to_csv(path, index=False)
-    print(f"Saved results -> {path}")
+def save_results(
+    mc_results: pd.DataFrame,
+    group_pos_probs: dict | None = None,
+    results_dir: str = "results",
+    latest_path: str = "data/processed/wc2026_probs.csv",
+) -> None:
+    """
+    Save prediction outputs in two places:
+      1. `latest_path` — canonical "current" file, overwritten each run
+      2. `results_dir/YYYY-MM-DD_*.csv` — date-stamped snapshot, giving an
+         audit trail of how predictions evolve across runs/matchdays
+         (same-day reruns overwrite that day's snapshot)
+
+    Args:
+        mc_results      : tournament advancement table from run_simulations()
+        group_pos_probs : optional {group: {team: {1st/2nd/3rd/4th/...}}}
+                          from simulate_all_groups()
+    """
+    from datetime import date
+    from pathlib import Path
+
+    stamp = date.today().isoformat()
+    out_dir = Path(results_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    Path(latest_path).parent.mkdir(parents=True, exist_ok=True)
+
+    # Tournament advancement table
+    mc_results.to_csv(latest_path, index=False)
+    versioned = out_dir / f"{stamp}_tournament_probs.csv"
+    mc_results.to_csv(versioned, index=False)
+    print(f"Saved results -> {latest_path}")
+    print(f"             -> {versioned}")
+
+    # Group position probabilities (flattened to one row per team)
+    if group_pos_probs is not None:
+        rows = []
+        for group, team_probs in group_pos_probs.items():
+            for team, p in team_probs.items():
+                rows.append({
+                    "group":   group,
+                    "team":    team,
+                    "p_1st":   p["1st"],
+                    "p_2nd":   p["2nd"],
+                    "p_3rd":   p["3rd"],
+                    "p_4th":   p["4th"],
+                    "exp_pts": p["exp_pts"],
+                    "exp_gd":  p["exp_gd"],
+                    "exp_gf":  p["exp_gf"],
+                })
+        group_df = pd.DataFrame(rows).sort_values(
+            ["group", "p_1st"], ascending=[True, False]
+        )
+        group_versioned = out_dir / f"{stamp}_group_position_probs.csv"
+        group_df.to_csv(group_versioned, index=False)
+        print(f"             -> {group_versioned}")
 
 
 if __name__ == "__main__":

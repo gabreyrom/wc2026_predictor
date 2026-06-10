@@ -18,7 +18,8 @@ The model ingests ~31,000 international results dating back to 1990, learns team
 8. [Output Interpretation](#output-interpretation)
 9. [Known Limitations](#known-limitations)
 10. [References](#references)
-11. [Visualizations](#visualizations-coming-soon)
+11. [Changelog](#changelog)
+12. [Visualizations](#visualizations-coming-soon)
 
 ---
 
@@ -31,7 +32,7 @@ The predictor chains four main components:
 | **Dixon-Coles** | Fits team attack/defense strengths via MLE on historical results |
 | **Context-dependent ρ** | Makes the low-score correction depend on match stake and team imbalance |
 | **LightGBM calibrator** | Second-stage model that corrects systematic draw overconfidence |
-| **Simulation** | Exact group-stage enumeration + Monte Carlo for 3rd-place + exact bracket propagation |
+| **Simulation** | Exact group-stage enumeration + Monte Carlo over the **official FIFA 2026 knockout bracket** |
 
 The result is a full probability table: for every team, P(reach R32), P(reach R16), P(reach QF), P(reach SF), P(reach Final), P(win WC).
 
@@ -64,17 +65,19 @@ Historical results (31k matches, 1990–2025)
 [4] Exact group-stage enumeration (3^6 = 729 outcomes per group)
         │
         ▼
-[5] Monte Carlo simulation (N=100k) for 3rd-place qualification
+[5] Monte Carlo simulation (N=100k, ~35s)
+        │   • full tournaments over the OFFICIAL FIFA 2026 bracket
+        │   • handles cross-group 3rd-place qualification
         │
         ▼
-[6] Exact bracket propagation (analytical, no sampling noise)
+[6] Sanity checks (Winner probs sum to 1, round monotonicity)
         │
         ▼
-Output: tournament table + per-match report with CIs
+Output: tournament table + versioned CSV snapshots + per-match report with CIs
 ```
 
 **Why the split between exact and Monte Carlo?**
-Group standings (1st/2nd/3rd/4th) are computed exactly by enumerating all 3^6 = 729 scoreline-outcome combinations per group. But 3rd-place qualification requires ranking 12 third-place teams across 12 groups simultaneously — that joint space is 729^12 ≈ 10^35, which is intractable. Only that cross-group comparison uses Monte Carlo.
+Group standings (1st/2nd/3rd/4th) are computed exactly by enumerating all 3^6 = 729 outcome combinations per group (W/D/L per match, with expected goals *conditioned on each outcome* feeding the GD/GF tiebreakers). But 3rd-place qualification requires ranking 12 third-place teams across 12 groups simultaneously — that joint space is 729^12 ≈ 10^35, which is intractable. The knockout stage therefore runs by Monte Carlo: each simulation plays out the full official bracket, including the 3rd-place slot allocation.
 
 ---
 
@@ -112,6 +115,19 @@ Time-decay: `w(t) = exp(-0.003 · days_ago)` — same ξ as the Dixon-Coles fit.
 
 Official 12-group draw (48 teams, Groups A–L).
 
+### Team list — `data/wc2026_teams.json`
+
+The 48 qualified teams, sorted alphabetically (dataset naming, e.g. "Czech Republic" not "Czechia").
+
+### Versioned prediction snapshots — `results/`
+
+Every pipeline run writes date-stamped snapshots:
+
+- `results/YYYY-MM-DD_tournament_probs.csv` — advancement probabilities per team
+- `results/YYYY-MM-DD_group_position_probs.csv` — per-group 1st/2nd/3rd/4th probabilities + expected points/GD/GF
+
+Same-day reruns overwrite that day's snapshot. This creates an audit trail of how predictions evolve across matchdays once real results come in. The canonical "latest" copy also lives at `data/processed/wc2026_probs.csv`.
+
 ---
 
 ## Project Structure
@@ -137,16 +153,19 @@ wc2026_predictor/
 │   │
 │   ├── simulation/
 │   │   ├── group_stage.py         # Exact 3^6 group enumeration
-│   │   ├── monte_carlo.py         # MC simulation (3rd-place qualification)
-│   │   └── bracket.py            # Exact knockout bracket propagation
+│   │   ├── monte_carlo.py         # MC over official FIFA 2026 bracket + MatchCache
+│   │   └── bracket.py            # Legacy exact propagation (not used by main.py)
 │   │
 │   └── output/
-│       ├── results.py             # Tournament advancement table
+│       ├── results.py             # Tournament table + versioned CSV saving
 │       └── match_report.py       # Per-match report (scorelines + CIs)
 │
 ├── data/
 │   ├── raw/                       # Downloaded CSVs (gitignored)
-│   └── processed/                 # Cleaned outputs (gitignored)
+│   ├── processed/                 # Cleaned matches, Elo, latest predictions (tracked)
+│   └── wc2026_teams.json          # The 48 teams, sorted alphabetically
+│
+├── results/                       # Date-stamped prediction snapshots (tracked)
 │
 └── models/
     └── lgbm_calibrator.joblib     # Saved LightGBM calibrator (gitignored)
@@ -261,15 +280,17 @@ We replace the scalar ρ with a sigmoid function of match context:
 - **|Δα|** = absolute difference in attack strengths — mismatched teams produce fewer low-scoring draws
 - **importance** = 0 (friendly) → 1.0 (WC knockout) — high-stakes matches see stronger defensive setups and more draws
 
-The sigmoid parameterisation guarantees ρ ∈ (−0.99, 0) unconditionally, enabling unconstrained optimisation.
+The sigmoid parameterisation guarantees ρ ∈ (−0.99, 0) unconditionally, enabling unconstrained optimisation. A small L2 penalty on the γ coefficients anchors them near zero: without it, the optimiser can drift into flat regions of the likelihood where the sigmoid saturates and ρ collapses to 0 — silently disabling the entire low-score correction (this actually happened before the penalty was added).
 
-**Fitted result (2010+ training set):**
+**Fitted result (2010+ training set, γ = [−1.68, −0.59, +0.08]):**
 
 | Context | ρ |
 |---|---|
-| Friendly, equal teams | −0.05 |
-| WC, equal teams | −0.50 |
-| WC, |Δα|=0.5 mismatch | −0.33 |
+| Friendly, equal teams | −0.155 |
+| WC, equal teams | −0.166 |
+| WC, \|Δα\|=0.5 mismatch | −0.129 |
+
+The strength-gap coefficient dominates: mismatched teams produce fewer low-scoring draws, so the correction weakens. Match importance has a small positive effect (high-stakes games are slightly more draw-prone).
 
 ### 3. Time-weighted MLE
 
@@ -327,7 +348,29 @@ The model estimates team attack/defense strengths (α, β) from data. These esti
 
 **Important caveat:** The bootstrap captures *sampling uncertainty* within the Dixon-Coles model. It does not capture *model uncertainty* (i.e., whether DC is the right model) — which for well-represented teams is probably the larger source of error.
 
-### 7. Elo as a signal, not a model
+### 7. Official FIFA 2026 knockout bracket
+
+The Monte Carlo simulation plays the knockout stage over the **official bracket structure** (matches 73–104), not a simplified pairing:
+
+- All 16 R32 matches are hard-coded from the official schedule (e.g. Match 73: 2A vs 2B, Match 79: 1A vs a 3rd-place team), ordered so that iterated halving reproduces the official R16 → QF → SF → Final flow.
+- **Third-place allocation:** FIFA publishes a 495-row lookup table (one row per C(12,8) combination of qualifying groups). Instead of hard-coding it, we implement the underlying rule: each of the 8 third-place slots accepts teams only from specific groups, and a backtracking bipartite matcher assigns the 8 qualified thirds to slots. Verified to produce a valid assignment for **all 495 combinations**.
+- Caveat: where several valid assignments exist, FIFA's table picks one specific option and our solver picks one deterministic valid option — these can differ in which slot a given third lands in, but the constraint structure (who can meet whom) is fully respected.
+
+This matters: bracket position is real signal. Brazil's win probability drops noticeably under the official bracket versus a random draw because Group C's winner lands in a tough quarter.
+
+### 8. Performance architecture
+
+Three optimisations keep the full pipeline under ~3 minutes:
+
+| Optimisation | Before | After |
+|---|---|---|
+| Group enumeration over 3 outcomes (W/D/L) instead of full scorelines | ~50⁶ ≈ 15B combos/group (hours) | 729 combos/group (**0.3s for all 12**) |
+| Vectorised `score_matrix` (NumPy outer product replaces 64 scipy pmf calls) | — | ~100× per call |
+| `MatchCache`: precomputed score-matrix CDFs for all team pairs before the MC loop | 100k sims ≈ 8 hours | **~35 seconds** (~3,400 sims/s) |
+
+The exact group enumeration collapses each match to W/D/L with expected goals *conditioned on the outcome* for GD/GF tiebreakers — exact for points (which dominate standings), approximate only in tiebreaker resolution.
+
+### 9. Elo as a signal, not a model
 
 Elo ratings are computed but not used as inputs to the Dixon-Coles likelihood. They serve two roles:
 1. **Reporting** — the pre-tournament Elo table gives an intuitive strength ranking
@@ -399,6 +442,22 @@ The 11×11 score matrix gives P(home goals = i, away goals = j) for every (i, j)
 
 - **VictorCCole (2025).** *Visual Analysis of International Football Results 1872–2025.* Match history dataset.  
   [https://github.com/VictorCCole/Visual-Analysis-of-International-Football-Results-1872-2025](https://github.com/VictorCCole/Visual-Analysis-of-International-Football-Results-1872-2025)
+
+- **Wikipedia.** *2026 FIFA World Cup knockout stage.* Source for the official R32 match definitions, third-place slot constraints, and bracket flow.  
+  [https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_knockout_stage](https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_knockout_stage)
+
+---
+
+## Changelog
+
+**2026-06-10 — pre-tournament fixes & official bracket**
+- **Official FIFA 2026 knockout bracket**: R32 matches 73–88 with correct R16/QF/SF/Final flow; third-place slot allocation solved as a constrained matching (all 495 combinations verified). Replaces the earlier same-group adjacent pairing, which also had an off-by-one round bug that inflated P(R16) ≈ P(R32).
+- **Fixed Dixon-Coles convergence**: L2 regularisation on ρ-γ + larger optimiser budget. Previously the fit could silently collapse ρ → 0, disabling the low-score correction.
+- **~850× Monte Carlo speedup** (8 h → ~35 s for 100k sims): vectorised `score_matrix` + precomputed `MatchCache` CDFs.
+- **Fixed group enumeration**: true 3⁶ outcome enumeration (was inadvertently enumerating ~15 billion scoreline combinations and hanging).
+- **Removed the exact-bracket-propagation overwrite** in `main.py` — its slot construction was incoherent and corrupted the Winner column; MC is now the single source of truth, with sanity checks (Winner sums to 1, round monotonicity).
+- **Versioned results**: date-stamped CSV snapshots in `results/`; `data/processed/` is now tracked by git.
+- New: `data/wc2026_teams.json`, "Best 3rd" column in the modal bracket, tqdm progress bars.
 
 ---
 

@@ -126,7 +126,7 @@ def main(
     # ── Output ───────────────────────────────────────────────────────────────
     print_tournament_table(mc_results, GROUPS)
     modal_bracket(GROUPS, group_pos_probs, mc_results)
-    save_results(mc_results)
+    save_results(mc_results, group_pos_probs=group_pos_probs)
 
     # ── Optional: single match deep dive ─────────────────────────────────────
     if match is not None:

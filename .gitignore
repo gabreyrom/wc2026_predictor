@@ -13,9 +13,8 @@ build/
 venv/
 env/
 
-# ── Data (raw downloads and processed files — too large for git) ──────────────
+# ── Data (raw downloads — too large for git) ──────────────────────────────────
 data/raw/
-data/processed/
 
 # ── Model artefacts ───────────────────────────────────────────────────────────
 models/*.pkl
