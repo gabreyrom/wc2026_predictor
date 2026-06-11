@@ -31,6 +31,10 @@ DISPLAY_NAMES: dict[str, str] = {
 # Flat list of all 48 teams
 ALL_TEAMS: list[str] = [team for group in GROUPS.values() for team in group]
 
+# Host nations — play their group-stage matches in their own country, and the
+# bracket is designed to keep them at home through the early knockout rounds.
+HOST_TEAMS: frozenset[str] = frozenset({"United States", "Mexico", "Canada"})
+
 # Knockout bracket slot assignments for the Round of 32
 # Format: (group, position) -> slot index (0-63)
 # Top 2 from each group + 8 best 3rd-place teams

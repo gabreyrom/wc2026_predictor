@@ -24,7 +24,7 @@ from collections import defaultdict
 from tqdm import tqdm
 
 from src.model.dixon_coles import DixonColesModel, score_matrix
-from src.simulation.group_stage import compute_standings, match_score_probs
+from src.simulation.group_stage import compute_standings, match_score_probs, host_flags
 
 
 # ── Precomputed match cache ───────────────────────────────────────────────────
@@ -52,8 +52,9 @@ class MatchCache:
             for away in teams:
                 if home == away:
                     continue
-                lam = model.lambda_ij(home, away)
-                mu  = model.lambda_ij(away, home)
+                h_home, h_away = host_flags(home, away)
+                lam = model.lambda_ij(home, away, home=h_home)
+                mu  = model.lambda_ij(away, home, home=h_away)
                 rho = model.rho_for_match(
                     model._match_context(home, away, match_importance)
                 )
@@ -206,8 +207,9 @@ def sample_match(
         return cache.sample(team_i, team_j, rng)
 
     # Fallback: compute on the fly (slow — avoid in tight loops)
-    lam = model.lambda_ij(team_i, team_j)
-    mu  = model.lambda_ij(team_j, team_i)
+    h_i, h_j = host_flags(team_i, team_j)
+    lam = model.lambda_ij(team_i, team_j, home=h_i)
+    mu  = model.lambda_ij(team_j, team_i, home=h_j)
     rho = model.rho_for_match(model._match_context(team_i, team_j, match_importance))
     mat = score_matrix(lam, mu, rho, max_goals=7)
     flat = mat.ravel()

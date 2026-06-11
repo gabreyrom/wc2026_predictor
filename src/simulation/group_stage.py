@@ -24,6 +24,20 @@ from typing import Generator
 from tqdm import tqdm
 
 from src.model.dixon_coles import DixonColesModel, score_matrix
+from tournament.wc2026_draw import HOST_TEAMS
+
+
+def host_flags(team_i: str, team_j: str) -> tuple[bool, bool]:
+    """
+    Home-advantage flags for a WC 2026 match. A host nation (USA/Mexico/Canada)
+    plays in its own country; if both teams are hosts the venue is ambiguous
+    and we treat it as neutral.
+    """
+    hi = team_i in HOST_TEAMS
+    hj = team_j in HOST_TEAMS
+    if hi and hj:
+        return False, False
+    return hi, hj
 
 
 # ── Match outcome enumeration ─────────────────────────────────────────────────
@@ -52,10 +66,11 @@ def match_score_probs(
     Used by monte_carlo.py for inverse-CDF sampling. Not used by the exact
     group enumeration (which uses match_outcome_probs instead).
     """
+    h_home, h_away = host_flags(home, away)
     rho = model.rho_for_match(model._match_context(home, away, match_importance))
     mat = score_matrix(
-        model.lambda_ij(home, away),
-        model.lambda_ij(away, home),
+        model.lambda_ij(home, away, home=h_home),
+        model.lambda_ij(away, home, home=h_away),
         rho,
         max_goals=MAX_GOALS_SIM,
     )
@@ -85,10 +100,11 @@ def match_outcome_probs(
     The calling code then enumerates 3^6 = 729 outcome combinations,
     not ~50^6 ≈ 15 billion scoreline combinations.
     """
+    h_home, h_away = host_flags(home, away)
     rho = model.rho_for_match(model._match_context(home, away, match_importance))
     mat = score_matrix(
-        model.lambda_ij(home, away),
-        model.lambda_ij(away, home),
+        model.lambda_ij(home, away, home=h_home),
+        model.lambda_ij(away, home, home=h_away),
         rho,
         max_goals=MAX_GOALS_SIM,
     )

@@ -121,7 +121,9 @@ def predict_matches(
         # Use tournament_category to set match_importance
         imp = IMPORTANCE_MAP.get(row.get("tournament_category", "Friendly"), 0.0)
 
-        pred = model.predict(home, away, match_importance=imp)
+        # Home advantage: applies when the listed home team is not on neutral ground
+        is_home = not bool(row.get("neutral", True))
+        pred = model.predict(home, away, match_importance=imp, home_i=is_home)
         actual = _outcome(row)
 
         p_actual = pred[actual]
@@ -326,6 +328,48 @@ def hyperparameter_search(
     return df
 
 
+# ── Paired bootstrap significance test ────────────────────────────────────────
+
+def paired_bootstrap_test(
+    ll_base: np.ndarray,
+    ll_alt: np.ndarray,
+    n_boot: int = 10_000,
+    seed: int = 42,
+) -> dict:
+    """
+    Paired bootstrap test on per-match log-loss differences.
+
+    Both models score the SAME matches, so the per-match difference
+    d_k = ll_alt(k) − ll_base(k) removes between-match variance entirely.
+    We resample the matches with replacement n_boot times and look at the
+    distribution of mean(d): if the 95% CI excludes 0, the difference is
+    statistically meaningful; if it straddles 0, it's indistinguishable
+    from noise.
+
+    Returns dict: mean_diff, ci_low, ci_high, p_value, n
+    (mean_diff > 0 means the alternative model is WORSE — higher log-loss).
+    """
+    d = np.asarray(ll_alt, dtype=float) - np.asarray(ll_base, dtype=float)
+    n = len(d)
+    rng = np.random.default_rng(seed)
+
+    means = np.empty(n_boot)
+    for b in range(n_boot):
+        means[b] = d[rng.integers(0, n, n)].mean()
+
+    ci_low, ci_high = np.percentile(means, [2.5, 97.5])
+    # Two-sided bootstrap p-value: how often the resampled mean crosses zero
+    p = 2.0 * min((means <= 0).mean(), (means >= 0).mean())
+
+    return {
+        "mean_diff": float(d.mean()),
+        "ci_low":    float(ci_low),
+        "ci_high":   float(ci_high),
+        "p_value":   float(min(p, 1.0)),
+        "n":         n,
+    }
+
+
 # ── LightGBM calibration layer report ────────────────────────────────────────
 
 def calibration_report_with_lgbm(
@@ -365,10 +409,11 @@ def calibration_report_with_lgbm(
     print(f"  DC  val  log-loss: {dc_val_ll:.4f}  (n={len(val_pred_df):,})")
     print(f"  DC  test log-loss: {dc_test_ll:.4f}  (n={len(test_pred_df):,})")
 
-    # ── 2. Fit LGBM on val predictions ──────────────────────────────────────
-    print(f"\n  Fitting LGBMCalibrator on {len(val_pred_df):,} val predictions...")
+    # ── 2. Fit LGBM on val predictions (hyperparams chosen by internal CV) ───
+    print(f"\n  Fitting LGBMCalibrator on {len(val_pred_df):,} val predictions "
+          f"(5-fold CV tuning)...")
     calibrator = LGBMCalibrator()
-    calibrator.fit(val_pred_df, verbose=True)
+    calibrator.fit_cv(val_pred_df, verbose=True)
 
     # ── 3. Calibrated predictions on test set ───────────────────────────────
     cal_test_df = calibrator.predict_proba_df(test_pred_df)
@@ -389,6 +434,25 @@ def calibration_report_with_lgbm(
     print(f"  {'DC + LightGBM':20s}  "
           f"{lgbm_val_ll:>12.4f}  {lgbm_test_ll:>13.4f}  "
           f"{lgbm_delta:>+6.4f} {better}")
+
+    # ── Paired bootstrap: is the test-set difference statistically real? ─────
+    boot = paired_bootstrap_test(
+        ll_base=test_pred_df["log_loss"].values,
+        ll_alt=cal_test_df["cal_log_loss"].values,
+    )
+    sig = (boot["ci_low"] > 0) or (boot["ci_high"] < 0)
+    print(f"\n  Paired bootstrap on test set (n={boot['n']:,}, 10k resamples):")
+    print(f"    Δ log-loss (LGBM − DC) = {boot['mean_diff']:+.4f}  "
+          f"95% CI [{boot['ci_low']:+.4f}, {boot['ci_high']:+.4f}]  "
+          f"p ≈ {boot['p_value']:.3f}")
+    if sig and boot["mean_diff"] > 0:
+        print(f"    → LGBM is significantly WORSE than raw DC. "
+              f"Prefer raw DC probabilities.")
+    elif sig and boot["mean_diff"] < 0:
+        print(f"    → LGBM is significantly BETTER than raw DC.")
+    else:
+        print(f"    → No statistically detectable difference; "
+              f"the simpler model (raw DC) wins by parsimony.")
 
     # ── 5. Draw calibration comparison ───────────────────────────────────────
     print(f"\n  Draw overconfidence fix (test set):")
@@ -422,6 +486,7 @@ def calibration_report_with_lgbm(
         "dc_test":  {"log_loss": dc_test_ll,  "n": len(test_pred_df)},
         "lgbm_val": {"log_loss": lgbm_val_ll, "n": len(val_pred_df)},
         "lgbm_test":{"log_loss": lgbm_test_ll,"n": len(test_pred_df)},
+        "bootstrap": boot,
         "val_pred_df":  val_pred_df,
         "test_pred_df": test_pred_df,
     }

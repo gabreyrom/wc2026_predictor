@@ -73,8 +73,13 @@ def match_report(
     if team_j not in model.alpha:
         raise ValueError(f"'{team_j}' not found in model. Check spelling.")
 
+    # ── Host advantage flags (WC 2026: USA/Mexico/Canada play at home) ───────
+    from src.simulation.group_stage import host_flags
+    home_i, home_j = host_flags(team_i, team_j)
+
     # ── DC point prediction ───────────────────────────────────────────────────
-    dc_pred = model.predict(team_i, team_j, match_importance=match_importance)
+    dc_pred = model.predict(team_i, team_j, match_importance=match_importance,
+                            home_i=home_i, home_j=home_j)
 
     # ── Parametric bootstrap CI ───────────────────────────────────────────────
     boot = model.parametric_bootstrap(
@@ -82,6 +87,8 @@ def match_report(
         n_samples=n_bootstrap,
         match_importance=match_importance,
         seed=seed,
+        home_i=home_i,
+        home_j=home_j,
     )
     alpha = (1.0 - ci_level) / 2.0
     lo = np.quantile(boot, alpha, axis=0)
@@ -272,7 +279,10 @@ def print_group_match_reports(
         for home, away in combinations(teams, 2):
             if home not in model.alpha or away not in model.alpha:
                 continue
-            dc = model.predict(home, away, match_importance=1.0)
+            from src.simulation.group_stage import host_flags
+            h_i, h_j = host_flags(home, away)
+            dc = model.predict(home, away, match_importance=1.0,
+                               home_i=h_i, home_j=h_j)
 
             cal_str = "—"
             if calibrator is not None:

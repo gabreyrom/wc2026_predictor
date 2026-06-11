@@ -218,6 +218,70 @@ def print_tournament_table(
     print("═" * W)
 
 
+# ── Per-match top-N scorelines ────────────────────────────────────────────────
+
+def save_match_scorelines(
+    model: DixonColesModel,
+    groups: dict[str, list[str]],
+    top_n: int = 5,
+    results_dir: str = "results",
+) -> pd.DataFrame:
+    """
+    For every known fixture, compute the top-N most probable scorelines and
+    save them to a date-stamped CSV in `results_dir`.
+
+    Covers the 72 group-stage fixtures (the only matches whose pairings are
+    known before the tournament). Knockout fixtures can be appended once the
+    real R32 pairings exist.
+
+    Output columns:
+        stage, group, home_team, away_team,
+        p_home, p_draw, p_away          — outcome probs (4 decimals)
+        rank, score, prob               — one row per (match, rank)
+    """
+    from datetime import date
+    from pathlib import Path
+    from itertools import combinations
+    from src.simulation.group_stage import host_flags
+
+    rows = []
+    for group_name in sorted(groups):
+        teams = groups[group_name]
+        for home, away in combinations(teams, 2):
+            if home not in model.alpha or away not in model.alpha:
+                continue
+            h_i, h_j = host_flags(home, away)
+            pred = model.predict(home, away, match_importance=1.0,
+                                 home_i=h_i, home_j=h_j)
+            mat = pred["score_matrix"]
+            n = mat.shape[0]
+            flat_idx = np.argsort(mat.ravel())[::-1][:top_n]
+
+            for rank, idx in enumerate(flat_idx, 1):
+                hg, ag = divmod(int(idx), n)
+                rows.append({
+                    "stage":     "group",
+                    "group":     group_name,
+                    "home_team": home,
+                    "away_team": away,
+                    "p_home":    round(pred["home"], 4),
+                    "p_draw":    round(pred["draw"], 4),
+                    "p_away":    round(pred["away"], 4),
+                    "rank":      rank,
+                    "score":     f"{hg}-{ag}",
+                    "prob":      round(float(mat[hg, ag]), 4),
+                })
+
+    df = pd.DataFrame(rows)
+    out_dir = Path(results_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{date.today().isoformat()}_match_scorelines.csv"
+    df.to_csv(path, index=False)
+    n_matches = len(df) // top_n
+    print(f"Saved top-{top_n} scorelines for {n_matches} matches -> {path}")
+    return df
+
+
 # ── Save to CSV (versioned) ───────────────────────────────────────────────────
 
 def save_results(

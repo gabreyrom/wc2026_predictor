@@ -129,6 +129,8 @@ class LGBMCalibrator:
         self.model: Optional[lgb.LGBMClassifier] = None
         self.feature_importance_: dict[str, float] = {}
         self.train_log_loss_: float = float("nan")
+        self.cv_log_loss_: float = float("nan")
+        self.best_params_: dict = {}
         self._fitted: bool = False
 
     # ── Fit ───────────────────────────────────────────────────────────────────
@@ -217,6 +219,104 @@ class LGBMCalibrator:
                 print(f"    {feat:<20s}  {imp:.0f}")
 
         return self
+
+    # ── Fit with internal cross-validation ────────────────────────────────────
+
+    def fit_cv(
+        self,
+        pred_df: pd.DataFrame,
+        n_splits: int = 5,
+        max_boost_rounds: int = 2000,
+        early_stopping_rounds: int = 50,
+        param_grid: list[dict] | None = None,
+        seed: int = 42,
+        verbose: bool = False,
+    ) -> "LGBMCalibrator":
+        """
+        Fit with hyperparameters chosen by k-fold cross-validation on the
+        training data. For each candidate config, lgb.cv selects the optimal
+        number of boosting rounds via early stopping; the config with the
+        lowest CV log-loss wins and is refitted on the full training set.
+
+        The held-out test set is never touched here — this is honest tuning.
+        """
+        if "actual" not in pred_df.columns:
+            raise ValueError("pred_df must have an 'actual' column (home/draw/away).")
+
+        X = _to_feature_df(pred_df)
+        y = pred_df["actual"].map(LABEL_MAP).values
+
+        if param_grid is None:
+            # Deliberately includes very small models (num_leaves=3) — with
+            # little residual bias to learn, near-linear models may win.
+            param_grid = [
+                {"num_leaves": nl, "learning_rate": lr, "min_child_samples": mcs}
+                for nl in (3, 7, 15)
+                for lr in (0.03, 0.1)
+                for mcs in (50, 100)
+            ]
+
+        base_params = {
+            "objective":        "multiclass",
+            "num_class":        3,
+            "metric":           "multi_logloss",
+            "feature_fraction": 0.8,
+            "bagging_fraction": 0.8,
+            "bagging_freq":     1,
+            "lambda_l1":        0.2,
+            "lambda_l2":        0.2,
+            "verbosity":        -1,
+            "seed":             seed,
+        }
+
+        dtrain = lgb.Dataset(X, label=y)
+        best: tuple[float, int, dict] | None = None
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            for g in param_grid:
+                cvres = lgb.cv(
+                    {**base_params, **g},
+                    dtrain,
+                    num_boost_round=max_boost_rounds,
+                    nfold=n_splits,
+                    stratified=True,
+                    seed=seed,
+                    callbacks=[lgb.early_stopping(early_stopping_rounds,
+                                                  verbose=False)],
+                )
+                losses = cvres["valid multi_logloss-mean"]
+                best_iter = int(np.argmin(losses)) + 1
+                best_loss = float(np.min(losses))
+                if verbose:
+                    print(f"    leaves={g['num_leaves']:>2} lr={g['learning_rate']:.2f} "
+                          f"min_child={g['min_child_samples']:>3}  "
+                          f"cv_logloss={best_loss:.4f}  rounds={best_iter}")
+                if best is None or best_loss < best[0]:
+                    best = (best_loss, best_iter, g)
+
+        cv_loss, n_rounds, best_grid = best
+        self.cv_log_loss_ = cv_loss
+        self.best_params_ = {**best_grid, "n_estimators": n_rounds}
+
+        if verbose:
+            print(f"\n  Best config: {best_grid}, n_estimators={n_rounds}, "
+                  f"cv_logloss={cv_loss:.4f}")
+
+        # Refit on full training data with the winning config
+        return self.fit(
+            pred_df,
+            n_estimators=n_rounds,
+            learning_rate=best_grid["learning_rate"],
+            max_depth=-1,
+            num_leaves=best_grid["num_leaves"],
+            min_child_samples=best_grid["min_child_samples"],
+            subsample=0.8,
+            colsample_bytree=0.8,
+            reg_alpha=0.2,
+            reg_lambda=0.2,
+            verbose=verbose,
+        )
 
     # ── Predict (single dict) ─────────────────────────────────────────────────
 

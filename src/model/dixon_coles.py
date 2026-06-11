@@ -155,6 +155,7 @@ class DixonColesModel:
         self.alpha: dict[str, float] = {}
         self.beta:  dict[str, float] = {}
         self.rho_gamma: np.ndarray = np.array([-2.3, 0.0, 0.0])  # default: rho ≈ -0.09
+        self.home_adv: float = 0.0   # η — log-goals boost for playing at home
         self.feature_names: list[str] = []
         self.gamma: np.ndarray = np.array([])
         self._fitted = False
@@ -198,9 +199,15 @@ class DixonColesModel:
         team_i: str,
         team_j: str,
         extra_features: Optional[np.ndarray] = None,
+        home: bool = False,
     ) -> float:
-        """Expected goals for team_i against team_j."""
+        """
+        Expected goals for team_i against team_j.
+        home=True adds the fitted home-advantage boost η to team_i's log-rate.
+        """
         base = self.alpha.get(team_i, 0.0) - self.beta.get(team_j, 0.0)
+        if home:
+            base += self.home_adv
         if extra_features is not None and len(self.gamma) > 0:
             base += float(np.dot(self.gamma, extra_features))
         return math.exp(base)
@@ -215,6 +222,8 @@ class DixonColesModel:
         rho_context: Optional[dict] = None,
         match_importance: float = 1.0,
         max_goals: int = MAX_GOALS,
+        home_i: bool = False,
+        home_j: bool = False,
     ) -> dict:
         """
         Full prediction for a match between team_i and team_j.
@@ -224,6 +233,8 @@ class DixonColesModel:
                               automatically from model.alpha + match_importance
             match_importance: 0=friendly … 1.0=WC knockout (used when
                               rho_context is None)
+            home_i / home_j : True if that team plays in its own country
+                              (WC 2026 hosts; both False = neutral venue)
 
         Returns dict with keys:
             score_matrix, lambda_i, mu_j, rho, home, draw, away
@@ -231,8 +242,8 @@ class DixonColesModel:
         if not self._fitted:
             raise RuntimeError("Model has not been fitted yet.")
 
-        lam = self.lambda_ij(team_i, team_j, extra_features)
-        mu  = self.lambda_ij(team_j, team_i, extra_features)
+        lam = self.lambda_ij(team_i, team_j, extra_features, home=home_i)
+        mu  = self.lambda_ij(team_j, team_i, extra_features, home=home_j)
 
         ctx = rho_context if rho_context is not None else \
               self._match_context(team_i, team_j, match_importance)
@@ -262,17 +273,19 @@ class DixonColesModel:
         n_samples: int = 500,
         match_importance: float = 1.0,
         seed: Optional[int] = 42,
+        home_i: bool = False,
+        home_j: bool = False,
     ) -> np.ndarray:
         """
         Return an (n_samples, 3) array of bootstrap predictions for
         P(team_i wins), P(draw), P(team_j wins).
 
         Method — parametric bootstrap via the L-BFGS-B approximate posterior:
-            1. Identify the 7 parameters relevant to this matchup:
-               alpha_i, beta_i, alpha_j, beta_j, rho_gamma[0,1,2]
-            2. Extract the 7×7 covariance submatrix from the L-BFGS-B
-               inverse Hessian approximation (7 matvec calls — fast).
-            3. Sample n_samples perturbations from that 7D Gaussian.
+            1. Identify the 8 parameters relevant to this matchup:
+               alpha_i, beta_i, alpha_j, beta_j, rho_gamma[0,1,2], eta
+            2. Extract the 8×8 covariance submatrix from the L-BFGS-B
+               inverse Hessian approximation (8 matvec calls — fast).
+            3. Sample n_samples perturbations from that 8D Gaussian.
             4. For each sample: reconstruct λ, μ, ρ and compute outcome probs.
 
         The spread across samples reflects parameter estimation uncertainty —
@@ -302,8 +315,10 @@ class DixonColesModel:
         idx_rg0 = 2 * n_teams                    # rho_gamma[0]
         idx_rg1 = 2 * n_teams + 1                # rho_gamma[1]
         idx_rg2 = 2 * n_teams + 2                # rho_gamma[2]
+        idx_eta = 2 * n_teams + 3                # home advantage
 
-        key_idx = [idx_ai, idx_bi, idx_aj, idx_bj, idx_rg0, idx_rg1, idx_rg2]
+        key_idx = [idx_ai, idx_bi, idx_aj, idx_bj,
+                   idx_rg0, idx_rg1, idx_rg2, idx_eta]
         k = len(key_idx)
 
         # ── Extract k×k covariance submatrix ─────────────────────────────────
@@ -338,11 +353,12 @@ class DixonColesModel:
         results = np.empty((n_samples, 3))
         for s, params in enumerate(param_samples):
             ai, bi, aj, bj = params[0], params[1], params[2], params[3]
-            rg = params[4:]
+            rg  = params[4:7]
+            eta = params[7]
 
             # Clip exponent to avoid overflow (>4 goals expected is unrealistic)
-            lam = math.exp(float(np.clip(ai - bj, -5.0, 5.0)))
-            mu  = math.exp(float(np.clip(aj - bi, -5.0, 5.0)))
+            lam = math.exp(float(np.clip(ai - bj + eta * home_i, -5.0, 5.0)))
+            mu  = math.exp(float(np.clip(aj - bi + eta * home_j, -5.0, 5.0)))
 
             # Context-dependent rho
             abs_diff = abs(ai - aj)
@@ -392,6 +408,14 @@ def fit(
 
     n_extra = len(feature_names) if feature_names else 0
     n_rho   = 3   # [intercept, abs_alpha_diff, match_importance]
+    n_eta   = 1   # home-advantage coefficient
+
+    # Home indicator: 1.0 when the listed home team genuinely plays at home
+    # (~72% of matches; the rest are neutral-venue tournament games)
+    if "neutral" in matches.columns:
+        home_ind = (~matches["neutral"].astype(bool)).astype(float).values
+    else:
+        home_ind = np.zeros(len(matches))
 
     # ── Precompute match_importance from tournament type ─────────────────────
     # Used as the third rho context feature. Scale: 0 (friendly) → 1 (WC).
@@ -413,13 +437,15 @@ def fit(
     # [alpha_0..alpha_{n-1},          — attack strengths
     #  beta_0..beta_{n-1},            — defense weaknesses
     #  rho_g0, rho_g1, rho_g2,       — rho context coefficients
+    #  eta,                           — home-advantage boost (log-goals)
     #  lambda_gamma_0..k]             — optional lambda covariates
     def unpack(params: np.ndarray):
         alpha     = params[:n_teams]
         beta      = params[n_teams:2 * n_teams]
         rho_gamma = params[2 * n_teams: 2 * n_teams + n_rho]
-        lam_gamma = params[2 * n_teams + n_rho:] if n_extra > 0 else np.array([])
-        return alpha, beta, rho_gamma, lam_gamma
+        eta       = params[2 * n_teams + n_rho]
+        lam_gamma = params[2 * n_teams + n_rho + n_eta:] if n_extra > 0 else np.array([])
+        return alpha, beta, rho_gamma, eta, lam_gamma
 
     # ── Pre-build index arrays for vectorised likelihood ─────────────────────
     home_idx = np.array([team_idx[t] for t in matches["home_team"]], dtype=np.int32)
@@ -445,10 +471,11 @@ def fit(
     RHO_L2 = 1.0
 
     def neg_log_likelihood(params: np.ndarray) -> float:
-        alpha, beta, rho_gamma, lam_gamma = unpack(params)
+        alpha, beta, rho_gamma, eta, lam_gamma = unpack(params)
 
         # ── Lambda / mu (vectorised) ─────────────────────────────────────────
-        log_lam = alpha[home_idx] - beta[away_idx]
+        # Home advantage applies only to the home team's scoring rate
+        log_lam = alpha[home_idx] - beta[away_idx] + eta * home_ind
         log_mu  = alpha[away_idx] - beta[home_idx]
         lam = np.exp(log_lam)
         mu  = np.exp(log_mu)
@@ -481,7 +508,7 @@ def fit(
         return -float(np.dot(weights, log_joint)) + rho_penalty
 
     # ── Initial parameters ───────────────────────────────────────────────────
-    x0 = np.zeros(2 * n_teams + n_rho + n_extra)
+    x0 = np.zeros(2 * n_teams + n_rho + n_eta + n_extra)
     # Vectorised initialisation of alpha/beta from goal stats
     np.add.at(x0, home_idx,            0.01 * home_goals)
     np.add.at(x0, n_teams + away_idx, -0.01 * home_goals)
@@ -492,24 +519,25 @@ def fit(
     x0[2 * n_teams]     = -2.3   # sigmoid(-2.3) * -0.99 ≈ -0.09
     x0[2 * n_teams + 1] =  0.0   # abs_alpha_diff slope
     x0[2 * n_teams + 2] =  0.0   # match_importance slope
+    x0[2 * n_teams + 3] =  0.25  # eta: ~+28% home goals, near literature values
 
     # ── Optimise (all params unconstrained — sigmoid handles rho bounds) ────
     print(f"Fitting Dixon-Coles on {len(matches):,} matches, {n_teams} teams "
           f"(context-dependent rho)...")
-    # Budget: 200 * n_params function evaluations, floor 100k.
-    # For 308 teams → 619 params → 200*619 ≈ 124k evals.
-    maxfun = max(100_000, 200 * (2 * n_teams + n_rho + n_extra))
+    # Budget: 300 * n_params function evaluations, floor 150k.
+    # For 308 teams → 620 params → ~186k evals.
+    maxfun = max(150_000, 300 * (2 * n_teams + n_rho + n_eta + n_extra))
     result = minimize(
         neg_log_likelihood,
         x0,
         method="L-BFGS-B",
-        options={"maxiter": 10_000, "ftol": 1e-8, "maxfun": maxfun},
+        options={"maxiter": 10_000, "ftol": 1e-7, "maxfun": maxfun},
     )
 
     if not result.success:
         print(f"Warning: optimisation did not fully converge: {result.message}")
 
-    alpha_fit, beta_fit, rho_gamma_fit, lam_gamma_fit = unpack(result.x)
+    alpha_fit, beta_fit, rho_gamma_fit, eta_fit, lam_gamma_fit = unpack(result.x)
 
     # ── Build model object ───────────────────────────────────────────────────
     model = DixonColesModel()
@@ -517,6 +545,7 @@ def fit(
     model.alpha         = {t: float(alpha_fit[i]) for t, i in team_idx.items()}
     model.beta          = {t: float(beta_fit[i])  for t, i in team_idx.items()}
     model.rho_gamma     = rho_gamma_fit
+    model.home_adv      = float(eta_fit)
     model.feature_names = feature_names or []
     model.gamma         = lam_gamma_fit
     model._fitted       = True
@@ -535,6 +564,8 @@ def fit(
     print(f"  rho(friendly, equal teams)    = {rho_friendly:.4f}")
     print(f"  rho(WC, equal teams)          = {rho_equal_wc:.4f}")
     print(f"  rho(WC, |Δα|=0.5 mismatch)   = {rho_mismatch:.4f}")
+    print(f"  home advantage η              = {model.home_adv:.4f} "
+          f"(×{math.exp(model.home_adv):.2f} goals at home)")
     return model
 
 

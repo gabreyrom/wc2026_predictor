@@ -31,7 +31,13 @@ from src.model.calibration import (
 from src.model.lgbm_calibrator import LGBMCalibrator
 from src.simulation.group_stage import simulate_all_groups, qualification_probs
 from src.simulation.monte_carlo import run_simulations, validate_against_exact
-from src.output.results import print_prob_table, print_tournament_table, modal_bracket, save_results
+from src.output.results import (
+    print_prob_table,
+    print_tournament_table,
+    modal_bracket,
+    save_results,
+    save_match_scorelines,
+)
 from src.output.match_report import print_match_report
 from tournament.wc2026_draw import GROUPS
 
@@ -70,29 +76,37 @@ def main(
     for team, elo in sorted(wc_elos.items(), key=lambda x: -x[1])[:10]:
         print(f"    {team:<20s} {elo:.0f}")
 
-    # ── Step 3: Dixon-Coles ──────────────────────────────────────────────────
-    print("\n[3/6] Fitting Dixon-Coles model...")
-    # Train on 2010+ — enough history, fast enough to fit
+    # ── Step 3: Dixon-Coles (production model) ───────────────────────────────
+    print("\n[3/6] Fitting Dixon-Coles model (production — all 2010+ data)...")
     fit_data = matches[matches["date"] >= "2010-01-01"].copy()
     model = fit_dixon_coles(fit_data, xi=xi)
     print(f"      baseline rho (zero context) = {model.rho:.4f}")
 
-    # ── Step 3.5 & 3.7: Temporal calibration + LightGBM calibration layer ────
+    # ── Step 3.5 & 3.7: Honest evaluation + LightGBM calibration layer ───────
+    # Leakage-free design: a SECOND model is fitted on pre-2018 data only.
+    # The production model above saw the val/test years, so scoring it there
+    # would grade it on its own training data. The eval model never saw
+    # val/test, making the report a true out-of-sample estimate — and the
+    # LGBM calibrator trains on the biases of a model facing genuinely unseen
+    # matches, which is the situation the production model will be in at the WC.
     calibrator: LGBMCalibrator | None = None
 
     if not skip_calibration:
-        print("\n[3.5/6] Running temporal cross-validation...")
-        _, val, test = temporal_split(
+        print("\n[3.5/6] Temporal cross-validation "
+              "(fitting separate eval model on pre-2018 train only)...")
+        train, val, test = temporal_split(
             fit_data,
             val_start="2018-01-01",
             test_start="2022-01-01",
         )
-        calibration_report(model, val, test)
+        eval_model = fit_dixon_coles(train, xi=xi)
+        calibration_report(eval_model, val, test)
 
         # ── Step 3.7: LightGBM calibration layer ─────────────────────────────
         if not skip_lgbm:
-            print("\n[3.7/6] Fitting LightGBM calibration layer...")
-            _, calibrator = calibration_report_with_lgbm(model, val, test)
+            print("\n[3.7/6] Fitting LightGBM calibration layer "
+                  "(on eval model's out-of-sample predictions)...")
+            _, calibrator = calibration_report_with_lgbm(eval_model, val, test)
 
             if save_calibrator:
                 calibrator.save("models/lgbm_calibrator.joblib")
@@ -127,6 +141,7 @@ def main(
     print_tournament_table(mc_results, GROUPS)
     modal_bracket(GROUPS, group_pos_probs, mc_results)
     save_results(mc_results, group_pos_probs=group_pos_probs)
+    save_match_scorelines(model, GROUPS, top_n=5)
 
     # ── Optional: single match deep dive ─────────────────────────────────────
     if match is not None:
