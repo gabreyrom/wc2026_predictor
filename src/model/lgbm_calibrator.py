@@ -77,6 +77,7 @@ FEATURE_COLS = [
     "log_lambda_ratio",   # computed internally from lambda_i / mu_j
     "abs_alpha_diff",
     "match_importance",
+    "log_value_ratio",    # log(squad value_i / value_j), NaN if not covered
 ]
 
 LABEL_MAP: dict[str, int] = {"home": 0, "draw": 1, "away": 2}
@@ -343,6 +344,7 @@ class LGBMCalibrator:
             "rho":              dc_pred.get("rho", -0.1),
             "abs_alpha_diff":   dc_pred.get("abs_alpha_diff", 0.0),
             "match_importance": dc_pred.get("match_importance", 1.0),
+            "log_value_ratio":  dc_pred.get("log_value_ratio", float("nan")),
         }
         df = pd.DataFrame([row])
         X = _to_feature_df(df)

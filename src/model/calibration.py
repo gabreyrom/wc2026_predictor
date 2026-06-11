@@ -34,6 +34,7 @@ import pandas as pd
 from collections import defaultdict
 
 from src.model.dixon_coles import DixonColesModel, fit as fit_dc
+from src.data.market_values import log_value_ratio
 
 
 # ── Split ─────────────────────────────────────────────────────────────────────
@@ -84,6 +85,7 @@ def predict_matches(
     model: DixonColesModel,
     matches: pd.DataFrame,
     match_importance: float = 0.5,
+    extra_feature_fns: dict | None = None,
 ) -> pd.DataFrame:
     """
     Run model predictions on a set of matches.
@@ -123,7 +125,8 @@ def predict_matches(
 
         # Home advantage: applies when the listed home team is not on neutral ground
         is_home = not bool(row.get("neutral", True))
-        pred = model.predict(home, away, match_importance=imp, home_i=is_home)
+        pred = model.predict(home, away, match_importance=imp, home_i=is_home,
+                             match_date=row["date"])
         actual = _outcome(row)
 
         p_actual = pred[actual]
@@ -144,8 +147,11 @@ def predict_matches(
                 model.alpha.get(home, 0.0) - model.alpha.get(away, 0.0)
             ),
             "match_importance":    imp,
+            "log_value_ratio":     log_value_ratio(home, away, row["date"]),
             "actual":              actual,
             "log_loss":            ll,
+            **{name: fn(home, away, row["date"])
+               for name, fn in (extra_feature_fns or {}).items()},
         })
 
     return pd.DataFrame(rows)
@@ -247,6 +253,115 @@ def calibration_report(
 
     print("=" * 62)
     return results
+
+
+# ── Out-of-fold temporal calibration (rolling origin) ────────────────────────
+
+def oof_calibration_report(
+    fit_data: pd.DataFrame,
+    xi: float = 0.003,
+    fold_cutoffs: list[str] | None = None,
+) -> tuple[dict, "LGBMCalibrator"]:  # type: ignore[name-defined]
+    """
+    Rolling-origin out-of-fold calibration:
+
+        fold k: fit Dixon-Coles on data < cutoff_k,
+                predict matches in [cutoff_k, cutoff_{k+1})
+
+    The calibrator trains on the UNION of all folds' out-of-sample
+    predictions. Because each fold's DC model has a different vintage
+    (different training size, different α/β scales), the calibrator learns a
+    correction that is robust to model-vintage shift — addressing the
+    transfer risk of training on one frozen eval model and applying to the
+    production model.
+
+    The final cutoff defines the held-out TEST predictor: a model fitted on
+    everything before it, scored on everything after. Test rows never enter
+    calibrator training.
+
+    Returns (results dict, fitted LGBMCalibrator).
+    """
+    from src.model.lgbm_calibrator import LGBMCalibrator
+
+    if fold_cutoffs is None:
+        fold_cutoffs = ["2016-01-01", "2018-01-01", "2020-01-01", "2022-01-01"]
+
+    print("\n" + "=" * 62)
+    print(f"{'OUT-OF-FOLD TEMPORAL CALIBRATION':^62}")
+    print("=" * 62)
+    print(f"  Baseline (uniform 1/3): {BASELINE_LOG_LOSS:.4f}")
+
+    # ── OOF folds for calibrator training ────────────────────────────────────
+    oof_frames = []
+    for k in range(len(fold_cutoffs) - 1):
+        c0, c1 = fold_cutoffs[k], fold_cutoffs[k + 1]
+        train  = fit_data[fit_data["date"] <  c0].copy()
+        window = fit_data[(fit_data["date"] >= c0)
+                          & (fit_data["date"] < c1)].copy()
+        print(f"\n  Fold {k+1}: fit < {c0[:7]}  →  predict {c0[:7]} – {c1[:7]} "
+              f"(n_train={len(train):,}, n_window={len(window):,})")
+        fold_model = fit_dc(train, xi=xi)
+        pf = predict_matches(fold_model, window)
+        pf["fold"] = f"{c0[:4]}–{c1[:4]}"
+        print(f"  Fold {k+1} DC out-of-sample log-loss: {log_loss_score(pf):.4f}  "
+              f"(n={len(pf):,})")
+        oof_frames.append(pf)
+
+    cal_train = pd.concat(oof_frames, ignore_index=True)
+    print(f"\n  Calibrator training set: {len(cal_train):,} OOF predictions "
+          f"across {len(oof_frames)} model vintages")
+
+    # ── Held-out test: fresh model fitted on everything before last cutoff ───
+    test_cut = fold_cutoffs[-1]
+    print(f"\n  Test predictor: fit < {test_cut[:7]}, score {test_cut[:7]}+ ...")
+    test_model = fit_dc(fit_data[fit_data["date"] < test_cut].copy(), xi=xi)
+    test_pred  = predict_matches(
+        test_model, fit_data[fit_data["date"] >= test_cut].copy()
+    )
+    dc_test_ll = log_loss_score(test_pred)
+    print(f"  DC test log-loss: {dc_test_ll:.4f}  (n={len(test_pred):,})")
+
+    # ── Fit calibrator on OOF union, evaluate once on test ───────────────────
+    print(f"\n  Fitting LGBMCalibrator on OOF predictions (5-fold CV tuning)...")
+    calibrator = LGBMCalibrator()
+    calibrator.fit_cv(cal_train, verbose=True)
+
+    cal_test = calibrator.predict_proba_df(test_pred)
+    lgbm_test_ll = float(cal_test["cal_log_loss"].mean())
+
+    print(f"\n  {'Model':20s}  {'Test log-loss':>13}  {'vs baseline':>11}")
+    print("  " + "-" * 50)
+    print(f"  {'Baseline (uniform)':20s}  {BASELINE_LOG_LOSS:>13.4f}  {'—':>11}")
+    print(f"  {'Dixon-Coles':20s}  {dc_test_ll:>13.4f}  "
+          f"{(BASELINE_LOG_LOSS - dc_test_ll) / BASELINE_LOG_LOSS:>+10.1%}")
+    print(f"  {'DC + LightGBM':20s}  {lgbm_test_ll:>13.4f}  "
+          f"{(BASELINE_LOG_LOSS - lgbm_test_ll) / BASELINE_LOG_LOSS:>+10.1%}")
+
+    boot = paired_bootstrap_test(
+        ll_base=test_pred["log_loss"].values,
+        ll_alt=cal_test["cal_log_loss"].values,
+    )
+    sig = (boot["ci_low"] > 0) or (boot["ci_high"] < 0)
+    print(f"\n  Paired bootstrap on test set (n={boot['n']:,}, 10k resamples):")
+    print(f"    Δ log-loss (LGBM − DC) = {boot['mean_diff']:+.4f}  "
+          f"95% CI [{boot['ci_low']:+.4f}, {boot['ci_high']:+.4f}]  "
+          f"p ≈ {boot['p_value']:.3f}")
+    if sig and boot["mean_diff"] < 0:
+        print("    → LGBM is significantly BETTER than raw DC.")
+    elif sig:
+        print("    → LGBM is significantly WORSE than raw DC. Prefer raw DC.")
+    else:
+        print("    → No detectable difference; parsimony favors raw DC.")
+    print("=" * 62)
+
+    results = {
+        "dc_test":   {"log_loss": dc_test_ll,   "n": len(test_pred)},
+        "lgbm_test": {"log_loss": lgbm_test_ll, "n": len(test_pred)},
+        "bootstrap": boot,
+        "cal_train_df": cal_train,
+        "test_pred_df": test_pred,
+    }
+    return results, calibrator
 
 
 # ── Full pipeline: split → fit → evaluate ────────────────────────────────────

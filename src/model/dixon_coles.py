@@ -158,6 +158,10 @@ class DixonColesModel:
         self.home_adv: float = 0.0   # η — log-goals boost for playing at home
         self.feature_names: list[str] = []
         self.gamma: np.ndarray = np.array([])
+        self.lambda_feature_fns: dict = {}   # {name: fn(i, j, date) -> float}
+        # Date used for covariate lookup when no match_date is given
+        # (simulation predicts WC 2026 fixtures)
+        self.default_predict_date = "2026-06-11"
         self._fitted = False
 
     # ── Rho accessor ──────────────────────────────────────────────────────────
@@ -194,22 +198,41 @@ class DixonColesModel:
 
     # ── Lambda accessor ───────────────────────────────────────────────────────
 
+    def _lambda_features(self, team_i: str, team_j: str, match_date=None) -> np.ndarray:
+        """
+        Evaluate the antisymmetric λ covariates for team_i vs team_j.
+        NaN (missing data) becomes 0 — the neutral value.
+        """
+        date = match_date if match_date is not None else self.default_predict_date
+        x = np.array([fn(team_i, team_j, date)
+                      for fn in self.lambda_feature_fns.values()], dtype=float)
+        return np.nan_to_num(x, nan=0.0)
+
     def lambda_ij(
         self,
         team_i: str,
         team_j: str,
         extra_features: Optional[np.ndarray] = None,
         home: bool = False,
+        match_date=None,
     ) -> float:
         """
         Expected goals for team_i against team_j.
+
         home=True adds the fitted home-advantage boost η to team_i's log-rate.
+        If the model was fitted with λ covariates, they are computed
+        automatically (from team_i's perspective) unless extra_features is
+        passed explicitly. match_date controls which covariate snapshot is
+        used (defaults to the WC 2026 start date).
         """
         base = self.alpha.get(team_i, 0.0) - self.beta.get(team_j, 0.0)
         if home:
             base += self.home_adv
         if extra_features is not None and len(self.gamma) > 0:
             base += float(np.dot(self.gamma, extra_features))
+        elif self.lambda_feature_fns and len(self.gamma) > 0:
+            x = self._lambda_features(team_i, team_j, match_date)
+            base += float(np.dot(self.gamma, x))
         return math.exp(base)
 
     # ── Full match prediction ─────────────────────────────────────────────────
@@ -224,6 +247,7 @@ class DixonColesModel:
         max_goals: int = MAX_GOALS,
         home_i: bool = False,
         home_j: bool = False,
+        match_date=None,
     ) -> dict:
         """
         Full prediction for a match between team_i and team_j.
@@ -235,6 +259,8 @@ class DixonColesModel:
                               rho_context is None)
             home_i / home_j : True if that team plays in its own country
                               (WC 2026 hosts; both False = neutral venue)
+            match_date      : date used for λ-covariate snapshots
+                              (default: WC 2026 start date)
 
         Returns dict with keys:
             score_matrix, lambda_i, mu_j, rho, home, draw, away
@@ -242,8 +268,10 @@ class DixonColesModel:
         if not self._fitted:
             raise RuntimeError("Model has not been fitted yet.")
 
-        lam = self.lambda_ij(team_i, team_j, extra_features, home=home_i)
-        mu  = self.lambda_ij(team_j, team_i, extra_features, home=home_j)
+        lam = self.lambda_ij(team_i, team_j, extra_features, home=home_i,
+                             match_date=match_date)
+        mu  = self.lambda_ij(team_j, team_i, extra_features, home=home_j,
+                             match_date=match_date)
 
         ctx = rho_context if rho_context is not None else \
               self._match_context(team_i, team_j, match_importance)
@@ -253,10 +281,17 @@ class DixonColesModel:
         probs = outcome_probs(lam, mu, rho, max_goals)
 
         return {
-            "score_matrix": mat,
-            "lambda_i":     lam,
-            "mu_j":         mu,
-            "rho":          rho,
+            "score_matrix":     mat,
+            "lambda_i":         lam,
+            "mu_j":             mu,
+            "rho":              rho,
+            # Context features included so downstream consumers (the LGBM
+            # calibrator's predict_proba_row) receive the SAME features the
+            # calibrator was trained with — never its neutral defaults.
+            "abs_alpha_diff":   ctx.get("abs_alpha_diff",
+                                        abs(self.alpha.get(team_i, 0.0)
+                                            - self.alpha.get(team_j, 0.0))),
+            "match_importance": ctx.get("match_importance", match_importance),
             **probs,
         }
 
@@ -297,10 +332,10 @@ class DixonColesModel:
             arr[:, 1] = P(draw)
             arr[:, 2] = P(team_j wins)   — away
         """
-        if not hasattr(self, "_hess_inv") or self._hess_inv is None:
+        if not hasattr(self, "_fisher_H") or self._fisher_H is None:
             raise RuntimeError(
                 "parametric_bootstrap requires the model to have been fitted "
-                "with the standard fit() function (hess_inv not stored)."
+                "with the standard fit() function (Fisher information not stored)."
             )
 
         rng = np.random.default_rng(seed)
@@ -316,24 +351,26 @@ class DixonColesModel:
         idx_rg1 = 2 * n_teams + 1                # rho_gamma[1]
         idx_rg2 = 2 * n_teams + 2                # rho_gamma[2]
         idx_eta = 2 * n_teams + 3                # home advantage
+        n_lam   = len(self.gamma)                # λ covariate coefficients
+        idx_gam = [2 * n_teams + 4 + g for g in range(n_lam)]
 
         key_idx = [idx_ai, idx_bi, idx_aj, idx_bj,
-                   idx_rg0, idx_rg1, idx_rg2, idx_eta]
+                   idx_rg0, idx_rg1, idx_rg2, idx_eta] + idx_gam
         k = len(key_idx)
 
-        # ── Extract k×k covariance submatrix ─────────────────────────────────
-        # Apply the inverse Hessian operator to each of the k standard basis
-        # vectors corresponding to our key parameters. This is exact within
-        # the L-BFGS-B approximation and costs only k matvec calls.
+        # Covariate values for this matchup (fixed across bootstrap samples)
+        x_feat = self._lambda_features(team_i, team_j) if n_lam else np.array([])
+
+        # ── Exact marginal covariance from the Fisher information ────────────
+        # Cov(θ_key) = [H⁻¹]_{key,key}: solve H·C = E_key (k right-hand sides)
+        # and read off the key rows. This marginalises over ALL other
+        # parameters — the proper uncertainty, unlike a conditional block.
         n_params = len(self._theta_hat)
-        e = np.zeros(n_params)
-        sub_cov = np.zeros((k, k))
+        E = np.zeros((n_params, k))
         for col, global_col in enumerate(key_idx):
-            e[global_col] = 1.0
-            col_vec = self._hess_inv.matvec(e)
-            for row, global_row in enumerate(key_idx):
-                sub_cov[row, col] = col_vec[global_row]
-            e[global_col] = 0.0
+            E[global_col, col] = 1.0
+        C = np.linalg.solve(self._fisher_H, E)
+        sub_cov = C[key_idx, :]
 
         # Symmetrise and ensure positive-definite via small jitter
         sub_cov = (sub_cov + sub_cov.T) / 2.0
@@ -355,10 +392,11 @@ class DixonColesModel:
             ai, bi, aj, bj = params[0], params[1], params[2], params[3]
             rg  = params[4:7]
             eta = params[7]
+            xg  = float(np.dot(params[8:], x_feat)) if n_lam else 0.0
 
             # Clip exponent to avoid overflow (>4 goals expected is unrealistic)
-            lam = math.exp(float(np.clip(ai - bj + eta * home_i, -5.0, 5.0)))
-            mu  = math.exp(float(np.clip(aj - bi + eta * home_j, -5.0, 5.0)))
+            lam = math.exp(float(np.clip(ai - bj + eta * home_i + xg, -5.0, 5.0)))
+            mu  = math.exp(float(np.clip(aj - bi + eta * home_j - xg, -5.0, 5.0)))
 
             # Context-dependent rho
             abs_diff = abs(ai - aj)
@@ -378,20 +416,22 @@ class DixonColesModel:
 def fit(
     matches: pd.DataFrame,
     xi: float = 0.003,
-    feature_names: Optional[list[str]] = None,
-    feature_matrix: Optional[np.ndarray] = None,
+    lambda_feature_fns: Optional[dict] = None,
     max_goals_ll: int = 8,
 ) -> DixonColesModel:
     """
     Fit a Dixon-Coles model via weighted maximum likelihood.
 
     Args:
-        matches       : DataFrame with columns: date, home_team, away_team,
-                        home_score, away_score
-        xi            : time-decay constant (higher = more weight on recent)
-        feature_names : optional list of extra covariate names
-        feature_matrix: optional (n_matches x n_features) array, aligned with matches
-        max_goals_ll  : max goals considered in log-likelihood (truncation)
+        matches  : DataFrame with columns: date, home_team, away_team,
+                   home_score, away_score
+        xi       : time-decay constant (higher = more weight on recent)
+        lambda_feature_fns : optional {name: fn(team_i, team_j, date) -> float}
+                   of ANTISYMMETRIC λ covariates (fn(i,j,d) == -fn(j,i,d)),
+                   e.g. log squad-value ratio. Each gets one coefficient γ_k:
+                       log λ += γ'x   and   log μ -= γ'x
+                   NaN feature values are treated as 0 (neutral).
+        max_goals_ll : max goals considered in log-likelihood (truncation)
 
     Returns:
         Fitted DixonColesModel
@@ -406,7 +446,17 @@ def fit(
     days_ago = (latest - matches["date"]).dt.days.values
     weights = np.exp(-xi * days_ago)
 
-    n_extra = len(feature_names) if feature_names else 0
+    lambda_feature_fns = lambda_feature_fns or {}
+    feature_names = list(lambda_feature_fns)
+    n_extra = len(feature_names)
+
+    # ── Build per-match covariate matrix (home-team perspective) ─────────────
+    X = np.zeros((len(matches), n_extra))
+    if n_extra:
+        cols = list(zip(matches["home_team"], matches["away_team"], matches["date"]))
+        for k, fn in enumerate(lambda_feature_fns.values()):
+            X[:, k] = [fn(h, a, d) for h, a, d in cols]
+        X = np.nan_to_num(X, nan=0.0)
     n_rho   = 3   # [intercept, abs_alpha_diff, match_importance]
     n_eta   = 1   # home-advantage coefficient
 
@@ -470,13 +520,26 @@ def fit(
     # so it has negligible effect on α/β but keeps rho_gamma sensible.
     RHO_L2 = 1.0
 
+    # Gauge (identifiability) penalty: the likelihood is invariant under
+    # α → α+c, β → β+c, so without a constraint the strengths have one free
+    # translation degree of freedom. Penalising (Σα)² + (Σβ)² pins the gauge
+    # at Σα = Σβ = 0 (a sum-to-zero constraint enforced softly). Since the
+    # penalised direction does not affect the likelihood at all, this changes
+    # nothing about predictions — it only makes the parameterisation unique.
+    GAUGE_L2 = 1.0
+
     def neg_log_likelihood(params: np.ndarray) -> float:
         alpha, beta, rho_gamma, eta, lam_gamma = unpack(params)
 
         # ── Lambda / mu (vectorised) ─────────────────────────────────────────
-        # Home advantage applies only to the home team's scoring rate
+        # Home advantage applies only to the home team's scoring rate.
+        # Antisymmetric covariates boost one side and dampen the other.
         log_lam = alpha[home_idx] - beta[away_idx] + eta * home_ind
         log_mu  = alpha[away_idx] - beta[home_idx]
+        if n_extra:
+            xg = X @ lam_gamma
+            log_lam = log_lam + xg
+            log_mu  = log_mu  - xg
         lam = np.exp(log_lam)
         mu  = np.exp(log_mu)
 
@@ -502,10 +565,15 @@ def fit(
         tau_vals = np.maximum(tau_vals, 1e-10)
         log_joint = np.log(tau_vals) + log_p_home + log_p_away
 
-        # ── L2 regularisation on rho_gamma ───────────────────────────────────
-        rho_penalty = RHO_L2 * float(np.dot(rho_gamma, rho_gamma))
+        # ── L2 regularisation on rho_gamma and lambda covariates ─────────────
+        penalty = RHO_L2 * float(np.dot(rho_gamma, rho_gamma))
+        if n_extra:
+            penalty += RHO_L2 * float(np.dot(lam_gamma, lam_gamma))
 
-        return -float(np.dot(weights, log_joint)) + rho_penalty
+        # ── Gauge constraint: pin Σα = Σβ = 0 (identifiability) ──────────────
+        penalty += GAUGE_L2 * (float(alpha.sum()) ** 2 + float(beta.sum()) ** 2)
+
+        return -float(np.dot(weights, log_joint)) + penalty
 
     # ── Initial parameters ───────────────────────────────────────────────────
     x0 = np.zeros(2 * n_teams + n_rho + n_eta + n_extra)
@@ -546,15 +614,76 @@ def fit(
     model.beta          = {t: float(beta_fit[i])  for t, i in team_idx.items()}
     model.rho_gamma     = rho_gamma_fit
     model.home_adv      = float(eta_fit)
-    model.feature_names = feature_names or []
+    model.feature_names = feature_names
     model.gamma         = lam_gamma_fit
+    model.lambda_feature_fns = lambda_feature_fns
     model._fitted       = True
 
     # ── Store for parametric bootstrap ───────────────────────────────────────
     model._theta_hat  = result.x.copy()
-    model._hess_inv   = result.hess_inv   # LbfgsInvHessProduct (lazy covariance)
     model._team_idx   = team_idx          # {team_name: param_index}
     model._n_teams    = n_teams
+
+    # ── Observed Fisher information (analytic, Poisson part) ─────────────────
+    # L-BFGS-B's hess_inv is a rank-`maxcor` approximation — useless as a
+    # covariance for ~620 params (it produced CIs like [1%, 99%] for Brazil).
+    # For a log-link Poisson each match contributes  w·λ·x xᵀ  to the observed
+    # information, where x is the design vector of log λ. We build the full
+    # matrix analytically and let parametric_bootstrap solve for the exact
+    # marginal covariance of the parameters it needs.
+    #
+    # Approximations: the tau correction's information is ignored (rho rows
+    # get only their L2 prior precision), and a small ridge handles the
+    # α/β translation degeneracy (α+c, β+c leaves all rates unchanged).
+    n_params = len(result.x)
+    alpha_f, beta_f, rho_f, eta_f, gam_f = unpack(result.x)
+    log_lam_f = alpha_f[home_idx] - beta_f[away_idx] + eta_f * home_ind
+    log_mu_f  = alpha_f[away_idx] - beta_f[home_idx]
+    if n_extra:
+        xg_f = X @ gam_f
+        log_lam_f = log_lam_f + xg_f
+        log_mu_f  = log_mu_f  - xg_f
+    lam_f = np.exp(np.clip(log_lam_f, -5, 5))
+    mu_f  = np.exp(np.clip(log_mu_f,  -5, 5))
+
+    H = np.zeros((n_params, n_params))
+
+    def _accumulate(rate_w: np.ndarray, comps: list[tuple[np.ndarray, np.ndarray]]):
+        """comps: list of (param_index_array, coefficient_array) per component.
+        Adds Σ_k rate_w[k] · coef_a[k]·coef_b[k] to H[idx_a[k], idx_b[k]]."""
+        for ia, ca in comps:
+            for ib, cb in comps:
+                np.add.at(H, (ia, ib), rate_w * ca * cb)
+
+    ones = np.ones(len(matches))
+    idx_eta_a = np.full(len(matches), 2 * n_teams + 3)
+
+    # log λ = α_home − β_away + η·home (+ γ'x)
+    comps_lam = [(home_idx, ones), (n_teams + away_idx, -ones), (idx_eta_a, home_ind)]
+    # log μ = α_away − β_home (− γ'x)
+    comps_mu  = [(away_idx, ones), (n_teams + home_idx, -ones)]
+    for f in range(n_extra):
+        idx_f = np.full(len(matches), 2 * n_teams + 4 + f)
+        comps_lam.append((idx_f, X[:, f]))
+        comps_mu.append((idx_f, -X[:, f]))
+
+    _accumulate(weights * lam_f, comps_lam)
+    _accumulate(weights * mu_f,  comps_mu)
+
+    # L2 prior precision on rho_gamma (and λ covariates)
+    for r in range(3):
+        H[2 * n_teams + r, 2 * n_teams + r] += 2.0 * RHO_L2
+    for f in range(n_extra):
+        H[2 * n_teams + 4 + f, 2 * n_teams + 4 + f] += 2.0 * RHO_L2
+
+    # Gauge-penalty precision: 2·GAUGE_L2 along the α and β all-ones
+    # directions — exactly the curvature the gauge penalty adds, replacing
+    # the previous blunt diagonal ridge (kept only at 1e-9 for numerics).
+    H[:n_teams, :n_teams]                       += 2.0 * GAUGE_L2
+    H[n_teams:2 * n_teams, n_teams:2 * n_teams] += 2.0 * GAUGE_L2
+    H += np.eye(n_params) * 1e-9
+
+    model._fisher_H = H
 
     # Print fitted rho at a few representative contexts
     rho_friendly = model.rho_for_match({"abs_alpha_diff": 0.0, "match_importance": 0.0})
@@ -566,6 +695,8 @@ def fit(
     print(f"  rho(WC, |Δα|=0.5 mismatch)   = {rho_mismatch:.4f}")
     print(f"  home advantage η              = {model.home_adv:.4f} "
           f"(×{math.exp(model.home_adv):.2f} goals at home)")
+    for name, g in zip(feature_names, lam_gamma_fit):
+        print(f"  λ covariate γ[{name}] = {g:+.4f}")
     return model
 
 

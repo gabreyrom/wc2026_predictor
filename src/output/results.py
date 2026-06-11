@@ -282,6 +282,112 @@ def save_match_scorelines(
     return df
 
 
+# ── All-104-matches probabilities with confidence intervals ──────────────────
+
+def save_match_probabilities(
+    model: DixonColesModel,
+    groups: dict[str, list[str]],
+    pairings: dict | None = None,
+    calibrator=None,
+    n_bootstrap: int = 200,
+    top_pairings: int = 3,
+    results_dir: str = "results",
+) -> pd.DataFrame:
+    """
+    Save per-match outcome probabilities with 90% parametric-bootstrap CIs
+    for the full tournament:
+
+      • 72 group fixtures — pairings known, p_pairing = 1
+      • knockout slots 73–104 — top-N most likely pairings from the MC
+        simulation, each with its occurrence probability and the outcome
+        probabilities CONDITIONAL on that pairing
+
+    Columns (probabilities rounded to 4 decimals):
+        stage, match_no, group, home_team, away_team, p_pairing,
+        p_home, p_draw, p_away,
+        ci_home_lo, ci_home_hi, ci_draw_lo, ci_draw_hi, ci_away_lo, ci_away_hi,
+        cal_home, cal_draw, cal_away   (LGBM-calibrated, if calibrator given)
+
+    For knockout rows p_draw is the 90-minute draw probability (match then
+    goes to extra time / penalties).
+    """
+    from datetime import date
+    from pathlib import Path
+    from itertools import combinations
+    from src.simulation.group_stage import host_flags
+
+    def _row(stage, match_no, group, home, away, p_pairing):
+        h_i, h_j = host_flags(home, away)
+        pred = model.predict(home, away, match_importance=1.0,
+                             home_i=h_i, home_j=h_j)
+        boot = model.parametric_bootstrap(
+            home, away, n_samples=n_bootstrap,
+            match_importance=1.0, home_i=h_i, home_j=h_j,
+        )
+        lo = np.quantile(boot, 0.05, axis=0)
+        hi = np.quantile(boot, 0.95, axis=0)
+
+        row = {
+            "stage":      stage,
+            "match_no":   match_no,
+            "group":      group,
+            "home_team":  home,
+            "away_team":  away,
+            "p_pairing":  round(p_pairing, 4),
+            "p_home":     round(pred["home"], 4),
+            "p_draw":     round(pred["draw"], 4),
+            "p_away":     round(pred["away"], 4),
+            "ci_home_lo": round(float(lo[0]), 4),
+            "ci_home_hi": round(float(hi[0]), 4),
+            "ci_draw_lo": round(float(lo[1]), 4),
+            "ci_draw_hi": round(float(hi[1]), 4),
+            "ci_away_lo": round(float(lo[2]), 4),
+            "ci_away_hi": round(float(hi[2]), 4),
+        }
+        if calibrator is not None:
+            from src.data.market_values import log_value_ratio
+            pred["log_value_ratio"] = log_value_ratio(home, away, "2026-06-11")
+            cal = calibrator.predict_proba_row(pred)
+            row["cal_home"] = round(cal["home"], 4)
+            row["cal_draw"] = round(cal["draw"], 4)
+            row["cal_away"] = round(cal["away"], 4)
+        return row
+
+    rows = []
+
+    # ── Group stage: 72 known fixtures ────────────────────────────────────────
+    for group_name in sorted(groups):
+        for home, away in combinations(groups[group_name], 2):
+            if home not in model.alpha or away not in model.alpha:
+                continue
+            rows.append(_row("group", None, group_name, home, away, 1.0))
+
+    # ── Knockout slots: top pairings from MC ──────────────────────────────────
+    if pairings:
+        for m_no in sorted(pairings):
+            ranked = sorted(pairings[m_no].items(), key=lambda x: -x[1])
+            for (home, away), p in ranked[:top_pairings]:
+                if home not in model.alpha or away not in model.alpha:
+                    continue
+                stage = ("R32" if 73 <= m_no <= 88 else
+                         "R16" if 89 <= m_no <= 96 else
+                         "QF"  if 97 <= m_no <= 100 else
+                         "SF"  if m_no in (101, 102) else
+                         "3rd-place" if m_no == 103 else "Final")
+                rows.append(_row(stage, m_no, None, home, away, p))
+
+    df = pd.DataFrame(rows)
+    out_dir = Path(results_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{date.today().isoformat()}_match_probabilities.csv"
+    df.to_csv(path, index=False)
+    n_group = (df["stage"] == "group").sum()
+    n_ko = df["match_no"].nunique()
+    print(f"Saved match probabilities ({n_group} group fixtures + "
+          f"{n_ko} knockout slots × top-{top_pairings} pairings) -> {path}")
+    return df
+
+
 # ── Save to CSV (versioned) ───────────────────────────────────────────────────
 
 def save_results(

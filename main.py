@@ -26,6 +26,7 @@ from src.model.calibration import (
     temporal_split,
     calibration_report,
     calibration_report_with_lgbm,
+    oof_calibration_report,
     predict_matches,
 )
 from src.model.lgbm_calibrator import LGBMCalibrator
@@ -37,6 +38,7 @@ from src.output.results import (
     modal_bracket,
     save_results,
     save_match_scorelines,
+    save_match_probabilities,
 )
 from src.output.match_report import print_match_report
 from tournament.wc2026_draw import GROUPS
@@ -77,48 +79,55 @@ def main(
         print(f"    {team:<20s} {elo:.0f}")
 
     # ── Step 3: Dixon-Coles (production model) ───────────────────────────────
+    # NOTE: no lambda_feature_fns are passed — this is intentional, not an
+    # oversight. Both candidate covariates were tested and rejected on
+    # validation: market values are absorbed by α/β in-sample (γ≈0), and
+    # momentum mean-reverts (γ<0, worse val log-loss). Their information
+    # enters via the LGBM calibrator instead. See README "Design Decisions".
     print("\n[3/6] Fitting Dixon-Coles model (production — all 2010+ data)...")
     fit_data = matches[matches["date"] >= "2010-01-01"].copy()
     model = fit_dixon_coles(fit_data, xi=xi)
     print(f"      baseline rho (zero context) = {model.rho:.4f}")
 
-    # ── Step 3.5 & 3.7: Honest evaluation + LightGBM calibration layer ───────
-    # Leakage-free design: a SECOND model is fitted on pre-2018 data only.
-    # The production model above saw the val/test years, so scoring it there
-    # would grade it on its own training data. The eval model never saw
-    # val/test, making the report a true out-of-sample estimate — and the
-    # LGBM calibrator trains on the biases of a model facing genuinely unseen
-    # matches, which is the situation the production model will be in at the WC.
+    # ── Step 3.5 & 3.7: Out-of-fold calibration + honest evaluation ──────────
+    # Rolling-origin protocol: DC models of several vintages (fit <2016,
+    # <2018, <2020) each predict their next two years out-of-sample; the
+    # LGBM calibrator trains on the union, making it robust to model-vintage
+    # shift when applied to the production model. A fresh test predictor
+    # (fit <2022, scored on 2022+) gives the honest final numbers; test rows
+    # never enter calibrator training.
     calibrator: LGBMCalibrator | None = None
 
     if not skip_calibration:
-        print("\n[3.5/6] Temporal cross-validation "
-              "(fitting separate eval model on pre-2018 train only)...")
-        train, val, test = temporal_split(
-            fit_data,
-            val_start="2018-01-01",
-            test_start="2022-01-01",
-        )
-        eval_model = fit_dixon_coles(train, xi=xi)
-        calibration_report(eval_model, val, test)
-
-        # ── Step 3.7: LightGBM calibration layer ─────────────────────────────
-        if not skip_lgbm:
-            print("\n[3.7/6] Fitting LightGBM calibration layer "
-                  "(on eval model's out-of-sample predictions)...")
-            _, calibrator = calibration_report_with_lgbm(eval_model, val, test)
+        if skip_lgbm:
+            # DC-only honest evaluation (no calibrator)
+            print("\n[3.5/6] Temporal cross-validation (eval model, no LGBM)...")
+            train, val, test = temporal_split(
+                fit_data, val_start="2018-01-01", test_start="2022-01-01",
+            )
+            eval_model = fit_dixon_coles(train, xi=xi)
+            calibration_report(eval_model, val, test)
+        else:
+            print("\n[3.5+3.7/6] Out-of-fold temporal calibration "
+                  "(4 model vintages, ~5 min)...")
+            _, calibrator = oof_calibration_report(fit_data, xi=xi)
 
             if save_calibrator:
                 calibrator.save("models/lgbm_calibrator.joblib")
 
-    # ── Step 4: Exact group stage ────────────────────────────────────────────
+    # ── Step 4: Exact group stage (LGBM-calibrated outcome masses) ───────────
     print("\n[4/6] Exact group stage enumeration (3^6 per group)...")
-    group_pos_probs, group_third_dists = simulate_all_groups(GROUPS, model)
+    group_pos_probs, group_third_dists = simulate_all_groups(
+        GROUPS, model, calibrator=calibrator,
+    )
     exact_qual_probs = qualification_probs(group_pos_probs)
 
-    # ── Step 5: Monte Carlo ──────────────────────────────────────────────────
+    # ── Step 5: Monte Carlo (same calibrated matrices) ───────────────────────
     print(f"\n[5/6] Monte Carlo simulation (n={n_mc:,})...")
-    mc_results = run_simulations(GROUPS, model, n=n_mc, seed=seed)
+    mc_results, ko_pairings = run_simulations(
+        GROUPS, model, n=n_mc, seed=seed, return_pairings=True,
+        calibrator=calibrator,
+    )
     validate_against_exact(mc_results, exact_qual_probs)
 
     # ── Step 6: Sanity checks on MC output ───────────────────────────────────
@@ -142,6 +151,12 @@ def main(
     modal_bracket(GROUPS, group_pos_probs, mc_results)
     save_results(mc_results, group_pos_probs=group_pos_probs)
     save_match_scorelines(model, GROUPS, top_n=5)
+    save_match_probabilities(
+        model, GROUPS,
+        pairings=ko_pairings,
+        calibrator=calibrator,
+        n_bootstrap=n_bootstrap,
+    )
 
     # ── Optional: single match deep dive ─────────────────────────────────────
     if match is not None:

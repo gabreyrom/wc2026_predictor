@@ -1,6 +1,6 @@
 # FIFA World Cup 2026 Predictor
 
-A statistical match predictor for the FIFA World Cup 2026, built on a **Dixon-Coles bivariate Poisson model** with a **LightGBM calibration layer** and **parametric bootstrap confidence intervals**.
+A statistical match predictor for the FIFA World Cup 2026, built on a **Dixon-Coles bivariate Poisson model** with **home advantage**, a **LightGBM calibration layer fed by Transfermarkt squad market values**, **calibrated tournament simulation over the official FIFA bracket**, and **Fisher-information confidence intervals**.
 
 The model ingests ~31,000 international results dating back to 1990, learns team-specific attack/defense strengths, and propagates those estimates through the full WC 2026 bracket to produce win probabilities for all 48 teams.
 
@@ -16,68 +16,74 @@ The model ingests ~31,000 international results dating back to 1990, learns team
 6. [How to Run](#how-to-run)
 7. [Design Decisions](#design-decisions)
 8. [Output Interpretation](#output-interpretation)
-9. [Known Limitations](#known-limitations)
-10. [References](#references)
-11. [Changelog](#changelog)
+9. [Honest Approximations Register](#honest-approximations-register)
+10. [Known Limitations](#known-limitations)
+11. [References](#references)
 12. [Visualizations](#visualizations-coming-soon)
 
 ---
 
 ## Quick Overview
 
-The predictor chains four main components:
-
 | Component | What it does |
 |---|---|
-| **Dixon-Coles** | Fits team attack/defense strengths via MLE on historical results |
+| **Dixon-Coles** | Fits team attack/defense strengths + home advantage via MLE on historical results |
 | **Context-dependent ρ** | Makes the low-score correction depend on match stake and team imbalance |
-| **LightGBM calibrator** | Second-stage model that corrects systematic draw overconfidence |
-| **Simulation** | Exact group-stage enumeration + Monte Carlo over the **official FIFA 2026 knockout bracket** |
+| **LightGBM calibrator** | Second-stage model fed by squad market values; corrects out-of-sample biases in outcome probabilities |
+| **Calibrated simulation** | Exact group enumeration + Monte Carlo over the **official FIFA 2026 bracket**, both consuming calibrated score matrices |
+| **Uncertainty** | Parametric bootstrap from analytic Fisher information → 90% CIs on every match probability |
 
-The result is a full probability table: for every team, P(reach R32), P(reach R16), P(reach QF), P(reach SF), P(reach Final), P(win WC).
+**Honest out-of-sample performance** (test = matches from 2022 onward, scored by a model fitted on pre-2022 data only; test rows never enter calibrator training):
 
-For individual matches, the model additionally reports the **full scoreline distribution** (top-N most likely scores) and **90% confidence intervals** on win/draw/loss probabilities derived from a parametric bootstrap over model parameters.
+| Model | Test log-loss | vs. uniform baseline (1.0986) |
+|---|---|---|
+| Dixon-Coles (+ home advantage) | 0.9261 | +15.7% |
+| **DC + LightGBM (+ market values)** | **0.8883** | **+19.1%** |
+
+The improvement of the calibration layer over raw DC is statistically significant (paired bootstrap on 3,378 test matches: Δ = −0.038, 95% CI [−0.050, −0.026], p ≈ 0).
 
 ---
 
 ## Pipeline
 
 ```
-Historical results (31k matches, 1990–2025)
+Historical results (31k matches, 1990–2025)        Transfermarkt squad values
+        │                                          (204 teams × 3 era snapshots)
+        ▼                                                      │
+[1] Data cleaning & tournament categorization                  │
+        ▼                                                      │
+[2] Elo ratings (time-weighted, K-factor by tournament)        │
+        ▼                                                      │
+[3] Dixon-Coles PRODUCTION fit (all 2010+ data)                │
+        │     λ = exp(α_i − β_j + η·home),  context-dependent ρ│
+        │                                                      │
+        ├──[3.5] OUT-OF-FOLD CALIBRATION (rolling origin):     │
+        │        DC vintages fit <2016 / <2018 / <2020 each    │
+        │        predict their next 2 years out-of-sample      │
+        │                                                      ▼
+        └──[3.7] LightGBM calibrator (5-fold CV-tuned) ◄── log_value_ratio
+                 trained on the OOF union (3 model vintages);
+                 verdict: fresh test predictor (fit <2022,
+                 scored on 2022+) + paired bootstrap
         │
         ▼
-[1] Data cleaning & tournament categorization
-        │
+[4] Exact group enumeration (3^6 per group, CALIBRATED outcome masses)
         ▼
-[2] Elo ratings (time-weighted, K-factor by tournament)
-        │
+[5] Monte Carlo (N=100k, ~35s) over the OFFICIAL FIFA bracket
+        │     • calibrated score matrices (LGBM decides who wins,
+        │       DC decides by how much)
+        │     • extra time at ⅓ rates, then 50/50 penalties
+        │     • knockout pairing frequencies per official match number
         ▼
-[3] Dixon-Coles MLE fitting (time-weighted, context-dependent ρ)
-        │
-        ├──[3.5] Temporal cross-validation (train/val/test split)
-        │           └── Log-loss evaluation vs. uniform baseline
-        │
-        └──[3.7] LightGBM calibration layer
-                    └── Fitted on val-set DC predictions
-                        Evaluated on held-out test set
-        │
+[6] Sanity checks (Winner probs sum to 1, round monotonicity,
+        exact-vs-MC top-2 agreement)
         ▼
-[4] Exact group-stage enumeration (3^6 = 729 outcomes per group)
-        │
-        ▼
-[5] Monte Carlo simulation (N=100k, ~35s)
-        │   • full tournaments over the OFFICIAL FIFA 2026 bracket
-        │   • handles cross-group 3rd-place qualification
-        │
-        ▼
-[6] Sanity checks (Winner probs sum to 1, round monotonicity)
-        │
-        ▼
-Output: tournament table + versioned CSV snapshots + per-match report with CIs
+Outputs: tournament table, versioned CSVs, per-match probabilities + CIs
 ```
 
-**Why the split between exact and Monte Carlo?**
-Group standings (1st/2nd/3rd/4th) are computed exactly by enumerating all 3^6 = 729 outcome combinations per group (W/D/L per match, with expected goals *conditioned on each outcome* feeding the GD/GF tiebreakers). But 3rd-place qualification requires ranking 12 third-place teams across 12 groups simultaneously — that joint space is 729^12 ≈ 10^35, which is intractable. The knockout stage therefore runs by Monte Carlo: each simulation plays out the full official bracket, including the 3rd-place slot allocation.
+**Why multiple Dixon-Coles fits?** The production model uses all data (you want 2024–25 form when predicting 2026). But scoring that model on 2018–2025 matches would grade it on its own training data — and a calibrator trained on one frozen eval model would see inputs (λ, μ, |Δα|) from a single model vintage, risking distribution shift when applied to production. The rolling-origin protocol fixes both: three model vintages each predict their own future out-of-sample, the calibrator trains on the union (robust to vintage shift), and a fresh test predictor (fit <2022) provides the honest final numbers on 2022+ matches that never entered any training step.
+
+**Why the split between exact and Monte Carlo?** Group standings are enumerated exactly (3⁶ = 729 outcome combinations per group). But 3rd-place qualification ranks 12 teams across 12 groups simultaneously (≈10³⁵ joint combinations) and the knockout bracket depends on it — that runs by Monte Carlo.
 
 ---
 
@@ -86,47 +92,35 @@ Group standings (1st/2nd/3rd/4th) are computed exactly by enumerating all 3^6 = 
 ### Match history — `data/raw/results.csv`
 
 - **Source:** [VictorCCole/Visual-Analysis-of-International-Football-Results-1872-2025](https://github.com/VictorCCole/Visual-Analysis-of-International-Football-Results-1872-2025) — a maintained mirror of the canonical martj42 dataset
-- **Coverage:** ~48,000 international results from 1872 to early 2025
-- **Used:** filtered to post-1990 (31,074 matches after cleaning)
-- **Cached at:** `data/raw/results.csv` (auto-downloaded on first run)
+- **Coverage:** ~48,000 international results from 1872 to early 2025; filtered to post-1990 (31,074 matches after cleaning)
+- Auto-downloaded on first run; cached locally (gitignored)
 
 ### Processed matches — `data/processed/matches_clean.csv`
 
-Cleaned version of the above with:
-- `tournament_category` mapped to one of: `World Cup`, `Continental Championship`, `World Cup Qualifier`, `Continental Qualifier`, `Friendly`
-- `neutral` flag (all WC group-stage matches are treated as neutral)
-- Filtered to teams present in the WC 2026 draw and their opponents
+Cleaned version with `tournament_category` (World Cup / Continental Championship / Qualifier / Friendly), a `neutral` venue flag (drives home-advantage estimation), and scores.
+
+### Squad market values — `data/market_values.json`
+
+Total squad value (M€) for **204 national teams** at three era snapshots (2019 / 2022 / 2025), scraped once from Transfermarkt season squad pages. Historical season pages show **era-appropriate player values** (verified: De Gea €70m on the 2019 page vs ~€10m today), so no future valuations leak into model training. Lookup rule: latest snapshot ≤ match date.
+
+Builder script: `src/data/fetch_market_values.py` (one-time, polite ~1 req/s; the pipeline never hits Transfermarkt at runtime).
 
 ### Elo ratings — `data/processed/elo_ratings.csv`
 
-Team strength ratings computed from the full match history using a time-weighted Elo system:
-
-| Tournament | K-factor |
-|---|---|
-| World Cup | 60 |
-| Continental Championship | 50 |
-| WC / Continental Qualifier | 40 |
-| Friendly | 20 |
-
-Goal-difference multiplier: GD=1 → ×1.0, GD=2 → ×1.5, GD≥3 → ×(11+GD)/8.
-Time-decay: `w(t) = exp(-0.003 · days_ago)` — same ξ as the Dixon-Coles fit.
+Time-weighted Elo (K: WC=60, Continental=50, Qualifiers=40, Friendlies=20; GD multiplier). Used for reporting and sanity checks only — not a model input.
 
 ### WC 2026 draw — `tournament/wc2026_draw.py`
 
-Official 12-group draw (48 teams, Groups A–L).
-
-### Team list — `data/wc2026_teams.json`
-
-The 48 qualified teams, sorted alphabetically (dataset naming, e.g. "Czech Republic" not "Czechia").
+Official 12-group draw (48 teams, Groups A–L), host nations (`HOST_TEAMS`), and name aliases. Also `data/wc2026_teams.json` — the 48 teams, sorted alphabetically.
 
 ### Versioned prediction snapshots — `results/`
 
-Every pipeline run writes date-stamped snapshots:
+Every run writes date-stamped CSVs (same-day reruns overwrite that day's snapshot), creating an audit trail of how predictions evolve across matchdays:
 
-- `results/YYYY-MM-DD_tournament_probs.csv` — advancement probabilities per team
-- `results/YYYY-MM-DD_group_position_probs.csv` — per-group 1st/2nd/3rd/4th probabilities + expected points/GD/GF
-
-Same-day reruns overwrite that day's snapshot. This creates an audit trail of how predictions evolve across matchdays once real results come in. The canonical "latest" copy also lives at `data/processed/wc2026_probs.csv`.
+- `<date>_tournament_probs.csv` — advancement probabilities per team
+- `<date>_group_position_probs.csv` — per-group 1st/2nd/3rd/4th + expected pts/GD/GF
+- `<date>_match_scorelines.csv` — top-5 most likely scorelines per group fixture
+- `<date>_match_probabilities.csv` — all 104 matches: outcome probabilities + 90% CIs (knockout slots: top-3 most likely pairings, probabilities conditional on pairing)
 
 ---
 
@@ -138,37 +132,41 @@ wc2026_predictor/
 ├── main.py                        # Full pipeline entry point
 │
 ├── tournament/
-│   └── wc2026_draw.py             # Official WC 2026 groups A–L
+│   └── wc2026_draw.py             # Official groups A–L, hosts, aliases
 │
 ├── src/
 │   ├── data/
 │   │   ├── fetch_matches.py       # Download & clean match history
+│   │   ├── fetch_market_values.py # One-time Transfermarkt snapshot builder
+│   │   ├── market_values.py       # Era-snapshot value lookup (no leakage)
 │   │   ├── elo.py                 # Elo rating computation
-│   │   └── features.py           # Rolling-form features for DC covariates
+│   │   └── features.py           # Rolling form/momentum (tested, rejected — see §7)
 │   │
 │   ├── model/
-│   │   ├── dixon_coles.py         # DC model: MLE fitting + parametric bootstrap
-│   │   ├── calibration.py         # Temporal split + calibration reports
-│   │   └── lgbm_calibrator.py     # LightGBM second-stage calibration layer
+│   │   ├── dixon_coles.py         # DC MLE: home adv, context ρ, λ covariates,
+│   │   │                          #   Fisher information, parametric bootstrap
+│   │   ├── calibration.py         # Temporal split, reports, paired bootstrap test
+│   │   └── lgbm_calibrator.py     # CV-tuned LightGBM calibration layer
 │   │
 │   ├── simulation/
-│   │   ├── group_stage.py         # Exact 3^6 group enumeration
-│   │   ├── monte_carlo.py         # MC over official FIFA 2026 bracket + MatchCache
+│   │   ├── group_stage.py         # Exact 3^6 enumeration + calibrated matrices
+│   │   ├── monte_carlo.py         # MC over official bracket, MatchCache, ET
 │   │   └── bracket.py            # Legacy exact propagation (not used by main.py)
 │   │
 │   └── output/
-│       ├── results.py             # Tournament table + versioned CSV saving
-│       └── match_report.py       # Per-match report (scorelines + CIs)
+│       ├── results.py             # Tournament table + all CSV outputs
+│       └── match_report.py       # Per-match deep dive (scorelines + CIs)
 │
 ├── data/
 │   ├── raw/                       # Downloaded CSVs (gitignored)
-│   ├── processed/                 # Cleaned matches, Elo, latest predictions (tracked)
-│   └── wc2026_teams.json          # The 48 teams, sorted alphabetically
+│   ├── processed/                 # Cleaned matches, Elo, latest predictions
+│   ├── market_values.json         # Transfermarkt era snapshots (committed)
+│   └── wc2026_teams.json          # The 48 teams
 │
-├── results/                       # Date-stamped prediction snapshots (tracked)
+├── results/                       # Date-stamped prediction snapshots
 │
 └── models/
-    └── lgbm_calibrator.joblib     # Saved LightGBM calibrator (gitignored)
+    └── lgbm_calibrator.joblib     # Saved calibrator (gitignored)
 ```
 
 ---
@@ -184,26 +182,20 @@ wc2026_predictor/
 # macOS — install OpenMP first (LightGBM dependency)
 brew install libomp
 
-# Clone and set up the virtual environment
 git clone https://github.com/your-username/wc2026_predictor.git
 cd wc2026_predictor
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies
-pip install pandas numpy scipy scikit-learn lightgbm joblib
+pip install pandas numpy scipy scikit-learn lightgbm joblib tqdm
 ```
-
-### Dependencies summary
 
 | Package | Purpose |
 |---|---|
-| `pandas` | Data loading and manipulation |
-| `numpy` | Vectorised MLE and matrix operations |
-| `scipy` | L-BFGS-B optimiser for MLE fitting |
-| `scikit-learn` | Required by LightGBM's sklearn API |
-| `lightgbm` | Second-stage calibration model |
-| `joblib` | Saving/loading the fitted calibrator |
+| `pandas`, `numpy` | Data handling, vectorised MLE |
+| `scipy` | L-BFGS-B optimiser |
+| `scikit-learn`, `lightgbm` | Calibration layer |
+| `joblib` | Calibrator persistence |
+| `tqdm` | Progress bars |
 
 ---
 
@@ -218,31 +210,28 @@ python main.py [options]
 
 | Argument | Default | Description |
 |---|---|---|
-| `--match TEAM1 TEAM2` | — | Print a full match report for any two teams |
-| `--n-mc N` | 100,000 | Monte Carlo simulations for 3rd-place qualification |
-| `--n-bootstrap N` | 500 | Bootstrap samples for match report CIs |
-| `--skip-calibration` | False | Skip DC calibration report and LightGBM fitting (fastest run) |
-| `--skip-lgbm` | False | Run DC calibration report but skip LightGBM fitting |
-| `--no-save-calibrator` | False | Do not save the fitted LightGBM model to disk |
-| `--force-download` | False | Re-download match data even if already cached |
-| `--seed N` | 42 | Random seed for reproducibility |
+| `--match TEAM1 TEAM2` | — | Detailed match report for any two teams (CIs, scorelines, calibrated odds) |
+| `--n-mc N` | 100,000 | Monte Carlo simulations |
+| `--n-bootstrap N` | 500 | Bootstrap samples for confidence intervals |
+| `--skip-calibration` | False | Skip evaluation + LightGBM (fastest; simulation falls back to raw DC) |
+| `--skip-lgbm` | False | Run the DC calibration report but skip LightGBM |
+| `--no-save-calibrator` | False | Don't write the calibrator to disk |
+| `--force-download` | False | Re-download match data |
+| `--seed N` | 42 | Random seed |
 
 ### Examples
 
 ```bash
-# Full run — tournament table + LGBM calibration (~5 min)
+# Full run: production fit + 4 OOF/test fits + LGBM + 100k MC (~8–10 min)
 python main.py
 
-# Quick sanity check — no calibration, fewer MC samples (~30s)
+# Quick sanity check (~90s)
 python main.py --skip-calibration --n-mc 10000
 
-# Single match deep dive after a full run
+# Single match deep dive
 python main.py --match Brazil France
 
-# Skip LightGBM, keep DC calibration report
-python main.py --skip-lgbm
-
-# Higher-resolution CIs (more bootstrap samples, slower)
+# Tighter CIs
 python main.py --match Spain Germany --n-bootstrap 2000
 ```
 
@@ -252,131 +241,95 @@ python main.py --match Spain Germany --n-bootstrap 2000
 
 ### 1. Dixon-Coles bivariate Poisson
 
-**Why not a plain Poisson regression?**
-Plain Poisson models treat home and away goals as independent. In practice, scorelines 0-0 and 1-1 occur more often than independence predicts, and 1-0 / 0-1 less so. Dixon & Coles (1997) introduced a correction factor τ that adjusts the joint probability for these four low-scoring outcomes:
+Plain Poisson models treat home and away goals as independent; in reality 0-0 and 1-1 occur more often than independence predicts. Dixon & Coles (1997) correct the four low-score cells:
 
 ```
 P(X=x, Y=y) = τ(x, y, λ, μ, ρ) · Poisson(x; λ) · Poisson(y; μ)
 
-τ(0,0) = 1 − ρλμ
-τ(1,0) = 1 + ρμ
-τ(0,1) = 1 + ρλ
-τ(1,1) = 1 − ρ
-τ(x,y) = 1   for all other (x,y)
+τ(0,0) = 1 − ρλμ    τ(1,0) = 1 + ρμ
+τ(0,1) = 1 + ρλ     τ(1,1) = 1 − ρ
 ```
 
-This is the only model that natively produces realistic 0-0 and 1-1 probabilities without ad hoc corrections.
+### 2. Home advantage
 
-### 2. Context-dependent ρ
+72% of historical matches have a true home team, and the effect is large (home win rate 50.7% vs 25.7% away; 1.69 vs 1.01 goals). A single fitted coefficient η enters the scoring rate:
 
-The original Dixon-Coles model fits a single global ρ (the low-score correlation). This is restrictive: a WC final between equal teams is very different from a friendly between mismatched ones.
+```
+log λ = α_i − β_j + η·home        fitted η = 0.247  →  ×1.28 goals at home
+```
 
-We replace the scalar ρ with a sigmoid function of match context:
+At prediction time the WC 2026 hosts (USA, Mexico, Canada) receive the boost. Adding η was the single largest model improvement (measured at the time of the change: test log-loss 1.0213 → 0.9605 under the then-current single-fold protocol) — much of the apparent "draw overconfidence" of the earlier model was actually unmodeled home advantage.
+
+### 3. Context-dependent ρ
+
+The low-score correlation is a sigmoid function of match context rather than a global constant:
 
 ```
 ρ(match) = −0.99 / (1 + exp(−(γ₀ + γ₁·|Δα| + γ₂·importance)))
 ```
 
-- **|Δα|** = absolute difference in attack strengths — mismatched teams produce fewer low-scoring draws
-- **importance** = 0 (friendly) → 1.0 (WC knockout) — high-stakes matches see stronger defensive setups and more draws
+guaranteeing ρ ∈ (−0.99, 0) without constraints. An L2 penalty anchors the γ's — without it the optimiser can drift into flat regions where the sigmoid saturates and ρ silently collapses to 0 (this happened; the penalty fixed it). Fitted: ρ ≈ −0.16 for equal teams, weakening to −0.13 for mismatches (γ₁ < 0: mismatched games produce fewer low-scoring draws).
 
-The sigmoid parameterisation guarantees ρ ∈ (−0.99, 0) unconditionally, enabling unconstrained optimisation. A small L2 penalty on the γ coefficients anchors them near zero: without it, the optimiser can drift into flat regions of the likelihood where the sigmoid saturates and ρ collapses to 0 — silently disabling the entire low-score correction (this actually happened before the penalty was added).
+### 4. Identifiability (gauge constraint)
 
-**Fitted result (2010+ training set, γ = [−1.68, −0.59, +0.08]):**
+The likelihood is invariant under α → α+c, β → β+c (only differences enter the rates), leaving one free translation direction. A soft sum-to-zero penalty on (Σα)² + (Σβ)² pins the gauge without affecting any prediction, and the Fisher matrix carries the matching precision — so the parameterisation is unique and the covariance well-defined.
 
-| Context | ρ |
+### 5. Time-weighted MLE + temporal evaluation
+
+Matches are weighted by `exp(−0.003·days_ago)` (half-life ≈ 231 days). Evaluation is strictly temporal via a **rolling-origin out-of-fold protocol**: DC models fitted on data before 2016 / 2018 / 2020 each predict their following two years out-of-sample; the calibrator trains on the union of those predictions; a fresh test predictor (fit <2022) is scored once on 2022+. The production model (all data) is never graded on matches it saw, and test rows never enter calibrator training. Model-selection decisions were made on validation/CV; the test set was consulted once per architectural decision, with paired-bootstrap significance tests on per-match log-loss differences.
+
+### 6. LightGBM calibration layer + market values
+
+A CV-tuned LightGBM (5-fold internal CV chose `num_leaves=3` — near-linear) takes the DC outputs plus context features and re-predicts the outcome probabilities. Its top feature is `log(value_i/value_j)` from Transfermarkt era snapshots. Training on out-of-fold predictions from **three model vintages** makes it robust to the feature-distribution shift between evaluation-time and production-time DC models.
+
+**Why a second stage instead of putting values inside the likelihood?** We tested that (§7): within the training window, a team's market value is a near-constant attribute, so α/β absorb it completely (γ ≈ 0). The value signal is **drift correction** — updating strength estimates that have gone stale out-of-sample (a squad's valuation tracks generational turnover faster than results do). Only a second-stage model operating on out-of-sample predictions can access that information. Full calibration layer effect, leakage-free: test log-loss 0.9261 → 0.8883 (paired bootstrap CI [−0.050, −0.026]).
+
+### 7. Negative results (tested and rejected)
+
+Documented because they shaped the architecture:
+
+| Candidate | Where tested | Result |
+|---|---|---|
+| Market values as λ covariate | DC likelihood | γ ≈ 0 — absorbed by α/β (collinear with team identity in-sample) |
+| Raw rolling form | DC likelihood | Worse val log-loss — confounded by schedule strength (minnows "outform" elites) |
+| Opponent-adjusted momentum | DC likelihood | γ < 0, worse val — once strength is controlled, what remains is luck, and luck mean-reverts |
+| Momentum / draw-rate | LGBM features | CV differences ±0.001 — noise; rejected by parsimony |
+
+The λ-covariate machinery (`lambda_feature_fns` in `fit()`) remains implemented and tested; `main.py` intentionally passes none.
+
+### 8. Calibrated simulation
+
+The tournament simulation consumes **outcome-calibrated score matrices**: each pair's DC matrix is rescaled so its win/draw/loss masses match the LGBM probabilities, keeping DC's scoreline distribution within each outcome:
+
+```
+M'[i,j] = M[i,j] · p_cal(outcome of (i,j)) / p_DC(outcome of (i,j))
+```
+
+This makes the tournament table and the reported match probabilities consistent — the best validated model drives both. The within-outcome approximation is documented in §[Approximations](#honest-approximations-register).
+
+### 9. Official FIFA 2026 knockout bracket
+
+All 16 R32 matches (73–88) are hard-coded from the official schedule, ordered so iterated halving reproduces the official R16→QF→SF→Final flow (matches 89–104, including the 3rd-place match). Third-place slot allocation — FIFA publishes it as a 495-row table — is implemented as the underlying rule: a constrained matching of the 8 qualified thirds to 8 slots with allowed-group lists, verified to solve **all 495 combinations**. Bracket position is real signal: Brazil's title probability drops visibly under the official bracket versus a random draw.
+
+### 10. Extra time and penalties
+
+Knockout draws play 30 minutes of extra time modeled as a DC match at one-third scoring rates — the stronger team gets its proper edge — before a 50/50 shootout (literature finds shootout outcomes correlate only weakly with strength).
+
+### 11. Confidence intervals via Fisher information
+
+L-BFGS-B's built-in inverse-Hessian is a rank-10 approximation of a ~620-parameter Hessian — useless as a covariance (it produced CIs like [1%, 99%]). Instead, the observed Fisher information is built **analytically** (for a log-link Poisson each match contributes w·λ·xxᵀ), and the parametric bootstrap samples from the exact marginal covariance of the ~9 parameters relevant to a matchup. CIs are wide where they should be (data-sparse teams, time-decayed effective sample sizes) and tight where they should be.
+
+### 12. Performance architecture
+
+| Optimisation | Effect |
 |---|---|
-| Friendly, equal teams | −0.155 |
-| WC, equal teams | −0.166 |
-| WC, \|Δα\|=0.5 mismatch | −0.129 |
+| 3-outcome group enumeration (vs full scorelines) | hours → 0.3s for all 12 groups |
+| Vectorised `score_matrix` (NumPy outer product) | ~100× per call |
+| `MatchCache`: precomputed CDFs for all pairs | 100k MC sims: 8h → ~35s |
 
-The strength-gap coefficient dominates: mismatched teams produce fewer low-scoring draws, so the correction weakens. Match importance has a small positive effect (high-stakes games are slightly more draw-prone).
+### 13. Elo as a signal, not a model
 
-### 3. Time-weighted MLE
-
-Matches are weighted by `w(t) = exp(−ξ · days_ago)` with ξ = 0.003, giving a half-life of ~231 days. This ensures the 2024–2025 form dominates the fit while retaining structural information from older tournaments. The same ξ is used for Elo rating computation.
-
-### 4. Temporal cross-validation
-
-Training on the full dataset and evaluating on the same data is meaningless — the model has seen every result it's scored on. Instead:
-
-| Split | Period | Size |
-|---|---|---|
-| Train | 2010 – 2017 | ~12k matches |
-| Validation | 2018 – 2021 | ~5k matches |
-| Test | 2022 – 2025 | ~3k matches |
-
-**Log-loss results vs. uniform baseline (log 3 ≈ 1.099):**
-
-| Model | Val | Test | vs. baseline |
-|---|---|---|---|
-| Dixon-Coles | 0.961 | 1.021 | +7% better |
-| DC + LightGBM | — | 0.966 | +12% better |
-
-### 5. LightGBM calibration layer
-
-**The problem:** Dixon-Coles is systematically overconfident on draws. When it predicts p_draw ≈ 44%, the actual draw rate is ~29%. This "draw overconfidence" is a known artifact of the Poisson assumption.
-
-**The fix:** A second-stage LightGBM classifier trained on validation-set DC predictions to learn the residual bias. It takes DC outputs + context features as input and produces corrected (p_home, p_draw, p_away) probabilities.
-
-```
-Features: p_home, p_draw, p_away, λ_i, μ_j, ρ, log(λ_i/μ_j), |Δα|, importance
-Target: actual outcome ∈ {home, draw, away}
-Training: validation set DC predictions (model never saw these during DC fitting)
-```
-
-**Key design principle:** The DC score matrix is unchanged — simulation outcomes are unaffected. Only the reported outcome probabilities are corrected.
-
-**Draw bias after calibration (test set):**
-
-| | DC | DC + LGBM |
-|---|---|---|
-| Mean predicted draw prob | 26.3% | 23.3% |
-| Actual draw rate | 23.0% | 23.0% |
-| Bias | +3.3% | +0.3% |
-
-### 6. Parametric bootstrap confidence intervals
-
-**Why not a fixed probability?**
-The model estimates team attack/defense strengths (α, β) from data. These estimates have uncertainty — teams with few recent matches (Haiti, Curaçao, Jordan) have wide confidence intervals; top teams (Brazil, France) have narrow ones. Reporting a single number hides this.
-
-**Method:** After MLE fitting, the L-BFGS-B optimiser produces an approximation to the inverse Hessian of the log-likelihood (the approximate parameter covariance). For any matchup between team i and team j, only 7 parameters matter: α_i, β_i, α_j, β_j, and the three ρ-gamma coefficients. We extract the 7×7 covariance submatrix (7 matrix-vector products — fast), then sample 500 parameter vectors from the resulting Gaussian, propagating each through the model to get a distribution over (p_home, p_draw, p_away). The 5th–95th percentiles form the 90% CI.
-
-**What this tells you:**
-- **Narrow CI** (e.g. Brazil win `[46%–58%]`): many historical matches, confident parameter estimates
-- **Wide CI** (e.g. Haiti win `[0%–52%]`): sparse data, model genuinely uncertain about this team's strength
-
-**Important caveat:** The bootstrap captures *sampling uncertainty* within the Dixon-Coles model. It does not capture *model uncertainty* (i.e., whether DC is the right model) — which for well-represented teams is probably the larger source of error.
-
-### 7. Official FIFA 2026 knockout bracket
-
-The Monte Carlo simulation plays the knockout stage over the **official bracket structure** (matches 73–104), not a simplified pairing:
-
-- All 16 R32 matches are hard-coded from the official schedule (e.g. Match 73: 2A vs 2B, Match 79: 1A vs a 3rd-place team), ordered so that iterated halving reproduces the official R16 → QF → SF → Final flow.
-- **Third-place allocation:** FIFA publishes a 495-row lookup table (one row per C(12,8) combination of qualifying groups). Instead of hard-coding it, we implement the underlying rule: each of the 8 third-place slots accepts teams only from specific groups, and a backtracking bipartite matcher assigns the 8 qualified thirds to slots. Verified to produce a valid assignment for **all 495 combinations**.
-- Caveat: where several valid assignments exist, FIFA's table picks one specific option and our solver picks one deterministic valid option — these can differ in which slot a given third lands in, but the constraint structure (who can meet whom) is fully respected.
-
-This matters: bracket position is real signal. Brazil's win probability drops noticeably under the official bracket versus a random draw because Group C's winner lands in a tough quarter.
-
-### 8. Performance architecture
-
-Three optimisations keep the full pipeline under ~3 minutes:
-
-| Optimisation | Before | After |
-|---|---|---|
-| Group enumeration over 3 outcomes (W/D/L) instead of full scorelines | ~50⁶ ≈ 15B combos/group (hours) | 729 combos/group (**0.3s for all 12**) |
-| Vectorised `score_matrix` (NumPy outer product replaces 64 scipy pmf calls) | — | ~100× per call |
-| `MatchCache`: precomputed score-matrix CDFs for all team pairs before the MC loop | 100k sims ≈ 8 hours | **~35 seconds** (~3,400 sims/s) |
-
-The exact group enumeration collapses each match to W/D/L with expected goals *conditioned on the outcome* for GD/GF tiebreakers — exact for points (which dominate standings), approximate only in tiebreaker resolution.
-
-### 9. Elo as a signal, not a model
-
-Elo ratings are computed but not used as inputs to the Dixon-Coles likelihood. They serve two roles:
-1. **Reporting** — the pre-tournament Elo table gives an intuitive strength ranking
-2. **Sanity check** — large discrepancies between Elo rank and DC-predicted win probability flag suspicious model fits
-
-The Dixon-Coles α (attack) and β (defense) parameters are conceptually similar to Elo but are estimated jointly via MLE, which allows them to disentangle scoring from conceding.
+Elo is computed for reporting and sanity checks. The DC α/β fill the same role but are estimated jointly by MLE, disentangling scoring from conceding.
 
 ---
 
@@ -386,31 +339,35 @@ The Dixon-Coles α (attack) and β (defense) parameters are conceptually similar
 
 ```
   Grp  Team                    R32    R16     QF     SF   Final     Win
-  ────────────────────────────────────────────────────────────────────
-  C    Brazil                98.3%  72.1%  51.2%  32.8%  19.4%  11.2%
+  J    Argentina             99.1%  67.4%  55.0%  40.5%  27.7%   ~17%    (illustrative)
 ```
 
-Each column is an independent probability: P(team reaches at least that round). They do not sum to 100% within a round — 32 teams each have some P(reach R16) that all sum to 16.
+Each column is P(team reaches at least that round). Columns don't sum to 100% within a round (16 teams reach the R16, so that column sums to ~16).
 
-### Match report
+### Match probabilities CSV (the 104 matches)
 
-```
-  BRAZIL  vs  FRANCE
-  ────────────────────────────────────────────────────────────────
-  Brazil win   54.2%    [ 48.1% – 60.3% ]   ← DC | 90% CI
-  Draw         26.1%    [ 21.4% – 30.8% ]
-  France win   19.7%    [ 15.2% – 24.2% ]
+- **Group rows** (`p_pairing = 1.0`): outcome probabilities, 90% CIs, and LGBM-calibrated probabilities for the 72 known fixtures.
+- **Knockout rows** (matches 73–104): the top-3 most likely pairings per slot from the MC, each with `p_pairing` (share of simulations producing that pairing) and outcome probabilities **conditional on the pairing**. `p_draw` for knockout rows is the 90-minute draw probability (the match then continues to extra time/penalties).
 
-  Calibrated (LightGBM):  Brazil 48.3%  Draw 27.1%  France 24.6%
-```
+### Match report (`--match A B`)
 
-- **DC probability** — raw Dixon-Coles prediction conditioned on point estimates of team strengths
-- **90% CI** — range across 500 bootstrap samples; reflects parameter estimation uncertainty
-- **Calibrated** — LightGBM-corrected; reduces draw overconfidence; preferred for single-match reporting
+DC probabilities with 90% CIs (parameter uncertainty), calibrated probabilities (the better point estimate), expected goals, ρ, and the top scorelines. Rule of thumb: quote the **calibrated** numbers, use the **CI** to communicate confidence, and look at **scorelines** for how the match actually plays out.
 
-### Top scorelines
+---
 
-The 11×11 score matrix gives P(home goals = i, away goals = j) for every (i, j). The top-3 are the individually most likely scorelines — they typically account for 25–40% of total probability combined.
+## Honest Approximations Register
+
+Things this model approximates, on purpose, with the known cost:
+
+| Approximation | Cost | Why accepted |
+|---|---|---|
+| **CIs from analytic Fisher information (Poisson part)** — τ contributes no information; ρ rows carry only their L2 prior precision | Roughly-90% intervals, not exact posteriors | τ's information is second-order; exact computation needs second derivatives of the correction |
+| **Group enumeration collapses to W/D/L** with outcome-conditioned expected goals as tiebreakers; no head-to-head | ≤ ~5.6pp deviation in top-2 probabilities vs full MC (measured by the built-in cross-validation) | Full scoreline enumeration is ~50⁶ per group; the MC — real sampled scorelines, full FIFA tiebreakers — drives all headline outputs |
+| **Knockout probabilities are conditional on pairing** | Conditional ≠ marginal; don't multiply rows naively | Marginal slot-level outcome probabilities mix incomparable opponents |
+| **Calibrated rescaling keeps DC's within-outcome scorelines** | Margins of re-rated teams shift only at the outcome level | Affects GD/GF tiebreakers at second order; points (outcome-driven) dominate standings |
+| **Pre-2019 matches use the 2019 value snapshot** | Mildly future-looking for 2018 calibration matches | Sensitivity measured (under the earlier single-fold protocol): removing those rows' values *worsened* leak-free test log-loss by +0.005 (CI excludes 0), so they carry genuine signal, not leakage-inflated performance |
+| **Penalties 50/50** (extra time IS modeled) | Ignores any shootout skill | Literature finds shootouts ≈ coin flip |
+| **Third-place slot matching picks one valid assignment** | May differ from FIFA's specific table row when several are valid | Constraint structure (who can meet whom) fully respected |
 
 ---
 
@@ -418,13 +375,12 @@ The 11×11 score matrix gives P(home goals = i, away goals = j) for every (i, j)
 
 | Limitation | Impact |
 |---|---|
-| **No squad/injury data** | The model treats "Brazil" as a fixed entity regardless of who is actually playing |
-| **No within-tournament updating** | Parameters are fixed at fit time; actual WC results don't update predictions |
-| **Model misspecification** | Poisson marginals underestimate variance in high-scoring games; the CI from the bootstrap does not capture this |
-| **Draw-recall trade-off** | LGBM calibration reduces draw bias but also reduces draw-recall (from 20% to 11%); some draws will be missed |
-| **Data gap for WC 2026 debutants** | Teams like Curaçao (few international matches) have very sparse training data → wide CIs |
-| **Neutral venue assumption** | All WC matches are treated as neutral; no home-advantage adjustment is made |
-| **Historical representativeness** | Time-weighting suppresses pre-2020 data; early-2024 friendlies count for little |
+| **No squad/injury data** | "Brazil" is a fixed entity regardless of who actually plays |
+| **No within-tournament updating (yet)** | Parameters frozen at fit time; conditioning on real results is planned |
+| **Model misspecification** | Poisson marginals understate variance in high-scoring games; no CI captures this |
+| **Draw-recall trade-off** | The calibrator is well-calibrated on draw *probabilities* but rarely makes draw its modal prediction |
+| **Data-sparse debutants** | Curaçao, Jordan, Haiti have thin histories and thin market-value coverage → wide CIs (honestly reported) |
+| **Host advantage applied throughout** | Hosts keep the home boost in late knockout rounds even where venues may not favor them (e.g. a Mexico final in New Jersey) |
 
 ---
 
@@ -434,30 +390,18 @@ The 11×11 score matrix gives P(home goals = i, away goals = j) for every (i, j)
 
 - **Karlis, D. & Ntzoufras, I. (2003).** *Analysis of sports data by using bivariate Poisson models.* Journal of the Royal Statistical Society, Series D, 52(3), 381–393.
 
-- **Towards Data Science (2022).** *Can Machine Learning Predict the World Cup?* Practical implementation reference for the three-layer architecture (DC → calibration → simulation).  
-  [https://towardsdatascience.com/can-machine-learning-predict-the-world-cup/](https://towardsdatascience.com/can-machine-learning-predict-the-world-cup/)  
+- **Towards Data Science (2022).** *Can Machine Learning Predict the World Cup?* Practical reference for the temporal-validation and calibration-layer architecture.
+  [https://towardsdatascience.com/can-machine-learning-predict-the-world-cup/](https://towardsdatascience.com/can-machine-learning-predict-the-world-cup/)
   GitHub: [marco-hening-tallarico/International-Football-Match-Forecasting-Pipeline](https://github.com/marco-hening-tallarico/International-Football-Match-Forecasting-Pipeline)
 
-- **Goldman Sachs Global Investment Research (2026).** *The World Cup 2026 — A Statistical Preview.* Inspiration for the simulation structure and bracket propagation approach.
-
-- **VictorCCole (2025).** *Visual Analysis of International Football Results 1872–2025.* Match history dataset.  
-  [https://github.com/VictorCCole/Visual-Analysis-of-International-Football-Results-1872-2025](https://github.com/VictorCCole/Visual-Analysis-of-International-Football-Results-1872-2025)
-
-- **Wikipedia.** *2026 FIFA World Cup knockout stage.* Source for the official R32 match definitions, third-place slot constraints, and bracket flow.  
+- **Wikipedia.** *2026 FIFA World Cup knockout stage.* Official R32 match definitions, third-place slot constraints, and bracket flow.
   [https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_knockout_stage](https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_knockout_stage)
 
----
+- **VictorCCole (2025).** *Visual Analysis of International Football Results 1872–2025.* Match history dataset.
+  [https://github.com/VictorCCole/Visual-Analysis-of-International-Football-Results-1872-2025](https://github.com/VictorCCole/Visual-Analysis-of-International-Football-Results-1872-2025)
 
-## Changelog
-
-**2026-06-10 — pre-tournament fixes & official bracket**
-- **Official FIFA 2026 knockout bracket**: R32 matches 73–88 with correct R16/QF/SF/Final flow; third-place slot allocation solved as a constrained matching (all 495 combinations verified). Replaces the earlier same-group adjacent pairing, which also had an off-by-one round bug that inflated P(R16) ≈ P(R32).
-- **Fixed Dixon-Coles convergence**: L2 regularisation on ρ-γ + larger optimiser budget. Previously the fit could silently collapse ρ → 0, disabling the low-score correction.
-- **~850× Monte Carlo speedup** (8 h → ~35 s for 100k sims): vectorised `score_matrix` + precomputed `MatchCache` CDFs.
-- **Fixed group enumeration**: true 3⁶ outcome enumeration (was inadvertently enumerating ~15 billion scoreline combinations and hanging).
-- **Removed the exact-bracket-propagation overwrite** in `main.py` — its slot construction was incoherent and corrupted the Winner column; MC is now the single source of truth, with sanity checks (Winner sums to 1, round monotonicity).
-- **Versioned results**: date-stamped CSV snapshots in `results/`; `data/processed/` is now tracked by git.
-- New: `data/wc2026_teams.json`, "Best 3rd" column in the modal bracket, tqdm progress bars.
+- **Transfermarkt.** Squad market values (era snapshots from historical season squad pages).
+  [https://www.transfermarkt.com](https://www.transfermarkt.com)
 
 ---
 
@@ -465,7 +409,8 @@ The 11×11 score matrix gives P(home goals = i, away goals = j) for every (i, j)
 
 Planned additions:
 - Group-stage qualification heat map (team × position)
-- Bracket probability tree (animated path to the final)
+- Bracket probability tree (path to the final)
 - Bootstrap CI distribution plots per match
 - Draw calibration curve (DC vs LGBM vs actual)
 - Team strength rankings: α (attack) vs β (defense) scatter plot
+- Prediction evolution across matchdays (from the versioned `results/` snapshots)

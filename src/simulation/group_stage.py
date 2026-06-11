@@ -53,27 +53,68 @@ def host_flags(team_i: str, team_j: str) -> tuple[bool, bool]:
 MAX_GOALS_SIM = 7  # max goals per team for enumeration (covers >99% of probability)
 
 
+def calibrated_score_matrix(
+    model: DixonColesModel,
+    home: str,
+    away: str,
+    calibrator=None,
+    match_importance: float = 1.0,
+    max_goals: int = MAX_GOALS_SIM,
+) -> np.ndarray:
+    """
+    Score matrix for a WC fixture, with outcome-level calibration applied.
+
+    With calibrator=None this is the raw (host-adjusted) Dixon-Coles matrix.
+    With a fitted LGBMCalibrator, the three outcome regions (home win / draw /
+    away win) are rescaled so their total mass matches the calibrated
+    probabilities, then renormalised:
+
+        M'[i,j] = M[i,j] · p_cal(outcome of (i,j)) / p_DC(outcome of (i,j))
+
+    The conditional scoreline distribution WITHIN each outcome stays DC's —
+    a documented approximation (margins of re-rated teams shift only at the
+    outcome level, not within it).
+    """
+    h_home, h_away = host_flags(home, away)
+    pred = model.predict(home, away, match_importance=match_importance,
+                         home_i=h_home, home_j=h_away, max_goals=max_goals)
+    mat = pred["score_matrix"].copy()
+    if calibrator is None:
+        return mat
+
+    from src.data.market_values import log_value_ratio
+    pred["log_value_ratio"] = log_value_ratio(home, away, model.default_predict_date)
+    cal = calibrator.predict_proba_row(pred)
+
+    n = mat.shape[0]
+    rows, cols = np.indices((n, n))
+    for mask, outcome in [(rows > cols, "home"),
+                          (rows == cols, "draw"),
+                          (rows < cols, "away")]:
+        p_dc = float(mat[mask].sum())
+        if p_dc > 1e-12:
+            mat[mask] *= cal[outcome] / p_dc
+
+    mat /= mat.sum()
+    return mat
+
+
 def match_score_probs(
     model: DixonColesModel,
     home: str,
     away: str,
     match_importance: float = 1.0,
+    calibrator=None,
 ) -> dict[tuple[int, int], float]:
     """
     Return a dict mapping (home_goals, away_goals) -> probability for all
-    scorelines up to MAX_GOALS_SIM.
+    scorelines up to MAX_GOALS_SIM, optionally outcome-calibrated.
 
     Used by monte_carlo.py for inverse-CDF sampling. Not used by the exact
     group enumeration (which uses match_outcome_probs instead).
     """
-    h_home, h_away = host_flags(home, away)
-    rho = model.rho_for_match(model._match_context(home, away, match_importance))
-    mat = score_matrix(
-        model.lambda_ij(home, away, home=h_home),
-        model.lambda_ij(away, home, home=h_away),
-        rho,
-        max_goals=MAX_GOALS_SIM,
-    )
+    mat = calibrated_score_matrix(model, home, away, calibrator,
+                                  match_importance, MAX_GOALS_SIM)
     result = {}
     for i in range(MAX_GOALS_SIM + 1):
         for j in range(MAX_GOALS_SIM + 1):
@@ -87,9 +128,11 @@ def match_outcome_probs(
     home: str,
     away: str,
     match_importance: float = 1.0,
+    calibrator=None,
 ) -> list[tuple[str, float, float, float]]:
     """
     Collapse the score matrix into 3 outcomes for exact group enumeration.
+    With a calibrator, the outcome masses are the LGBM-calibrated ones.
 
     Returns a list of 3 tuples:
         (outcome, probability, exp_home_goals, exp_away_goals)
@@ -100,14 +143,8 @@ def match_outcome_probs(
     The calling code then enumerates 3^6 = 729 outcome combinations,
     not ~50^6 ≈ 15 billion scoreline combinations.
     """
-    h_home, h_away = host_flags(home, away)
-    rho = model.rho_for_match(model._match_context(home, away, match_importance))
-    mat = score_matrix(
-        model.lambda_ij(home, away, home=h_home),
-        model.lambda_ij(away, home, home=h_away),
-        rho,
-        max_goals=MAX_GOALS_SIM,
-    )
+    mat = calibrated_score_matrix(model, home, away, calibrator,
+                                  match_importance, MAX_GOALS_SIM)
 
     n = mat.shape[0]
     idx = np.arange(n, dtype=float)
@@ -239,6 +276,7 @@ def enumerate_group(
     group_name: str,
     teams: list[str],
     model: DixonColesModel,
+    calibrator=None,
 ) -> tuple[dict[str, dict[str, float]], dict]:
     """
     Exactly enumerate all 3^6 = 729 outcome combinations for a group of 4 teams.
@@ -262,7 +300,8 @@ def enumerate_group(
     ]  # 6 matchups
 
     # Precompute 3-outcome distributions for each match (fast: O(MAX_GOALS_SIM²))
-    outcome_data = [match_outcome_probs(model, h, a) for h, a in matches]
+    outcome_data = [match_outcome_probs(model, h, a, calibrator=calibrator)
+                    for h, a in matches]
 
     # Result accumulators
     position_probs: dict[str, dict[str, float]] = {
@@ -326,6 +365,7 @@ def enumerate_group(
 def simulate_all_groups(
     groups: dict[str, list[str]],
     model: DixonColesModel,
+    calibrator=None,
 ) -> tuple[dict, dict]:
     """
     Run exact enumeration for all groups.
@@ -337,7 +377,7 @@ def simulate_all_groups(
     all_position_probs = {}
     all_third_dists = {}
     for group_name, teams in tqdm(groups.items(), desc="Groups", unit="group"):
-        pos_probs, third_dist = enumerate_group(group_name, teams, model)
+        pos_probs, third_dist = enumerate_group(group_name, teams, model, calibrator)
         all_position_probs[group_name] = pos_probs
         all_third_dists[group_name] = third_dist
     return all_position_probs, all_third_dists

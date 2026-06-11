@@ -103,6 +103,8 @@ def match_report(
     # ── Calibrated prediction ─────────────────────────────────────────────────
     cal = None
     if calibrator is not None:
+        from src.data.market_values import log_value_ratio
+        dc_pred["log_value_ratio"] = log_value_ratio(team_i, team_j, "2026-06-11")
         cal = calibrator.predict_proba_row(dc_pred)
 
     # ── Top scorelines ────────────────────────────────────────────────────────
@@ -286,6 +288,8 @@ def print_group_match_reports(
 
             cal_str = "—"
             if calibrator is not None:
+                from src.data.market_values import log_value_ratio
+                dc["log_value_ratio"] = log_value_ratio(home, away, "2026-06-11")
                 cal = calibrator.predict_proba_row(dc)
                 cal_str = f"{cal['home']:.0%}/{cal['draw']:.0%}/{cal['away']:.0%}"
 

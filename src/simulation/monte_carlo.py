@@ -24,7 +24,9 @@ from collections import defaultdict
 from tqdm import tqdm
 
 from src.model.dixon_coles import DixonColesModel, score_matrix
-from src.simulation.group_stage import compute_standings, match_score_probs, host_flags
+from src.simulation.group_stage import (
+    compute_standings, match_score_probs, host_flags, calibrated_score_matrix,
+)
 
 
 # ── Precomputed match cache ───────────────────────────────────────────────────
@@ -35,6 +37,14 @@ class MatchCache:
     pair before the simulation loop. Each sample_match call then costs only
     a dict lookup + np.searchsorted instead of recomputing the score matrix.
 
+    With a calibrator, the cached 90-minute matrices are outcome-calibrated
+    (LGBM probabilities drive who wins; DC drives the scorelines within each
+    outcome) — so the tournament simulation and the reported calibrated match
+    probabilities are consistent.
+
+    Also caches an EXTRA-TIME distribution per pair: a DC matrix at one-third
+    rates (30 min of play), used when a knockout match is level after 90'.
+
     Speedup: ~100–500x vs. computing score_matrix inside each MC iteration.
     """
 
@@ -44,30 +54,50 @@ class MatchCache:
         teams: list[str],
         match_importance: float = 1.0,
         max_goals: int = 7,
+        calibrator=None,
     ) -> None:
         self._n = max_goals + 1
+        self._n_et = 4 + 1                          # 0–4 goals in 30 minutes
         self._cache: dict[tuple[str, str], np.ndarray] = {}
+        self._et_cache: dict[tuple[str, str], np.ndarray] = {}
 
         for home in teams:
             for away in teams:
                 if home == away:
                     continue
+                # 90-minute matrix (outcome-calibrated when calibrator given)
+                mat = calibrated_score_matrix(
+                    model, home, away, calibrator, match_importance, max_goals,
+                )
+                flat = mat.ravel()
+                self._cache[(home, away)] = np.cumsum(flat / flat.sum())
+
+                # Extra-time matrix: 30 min ≈ one-third of the 90' rates.
+                # Raw DC (no calibration — the calibrator was trained on
+                # 90-minute outcomes only).
                 h_home, h_away = host_flags(home, away)
                 lam = model.lambda_ij(home, away, home=h_home)
                 mu  = model.lambda_ij(away, home, home=h_away)
                 rho = model.rho_for_match(
                     model._match_context(home, away, match_importance)
                 )
-                mat  = score_matrix(lam, mu, rho, max_goals=max_goals)
-                flat = mat.ravel()
-                flat = flat / flat.sum()           # guarantee sums to 1
-                self._cache[(home, away)] = np.cumsum(flat)
+                mat_et = score_matrix(lam / 3.0, mu / 3.0, rho,
+                                      max_goals=self._n_et - 1)
+                flat_et = mat_et.ravel()
+                self._et_cache[(home, away)] = np.cumsum(flat_et / flat_et.sum())
 
     def sample(self, home: str, away: str, rng: np.random.Generator) -> tuple[int, int]:
         """Return (home_goals, away_goals) sampled from the precomputed CDF."""
         cdf = self._cache[(home, away)]
         idx = int(np.searchsorted(cdf, rng.random()))
         return divmod(idx, self._n)
+
+    def sample_extra_time(self, home: str, away: str,
+                          rng: np.random.Generator) -> tuple[int, int]:
+        """Sample a 30-minute extra-time scoreline."""
+        cdf = self._et_cache[(home, away)]
+        idx = int(np.searchsorted(cdf, rng.random()))
+        return divmod(idx, self._n_et)
 
 
 # ── 3rd-place ranking criteria (FIFA rules) ──────────────────────────────────
@@ -114,6 +144,17 @@ R32_THIRD_SLOTS: dict[int, frozenset[str]] = {
 # 92:W79-W80, 95:W86-W88, 96:W85-W87), QF (97:89-90, 98:93-94, 99:91-92,
 # 100:95-96), SF (101:97-98, 102:99-100), Final (104:101-102).
 R32_MATCH_ORDER = [74, 77, 73, 75, 83, 84, 81, 82, 76, 78, 79, 80, 86, 88, 85, 87]
+
+# Official match numbers for each knockout round, in bracket-list order
+# (pair k of the remaining list plays the k-th number of its round).
+ROUND_MATCH_NUMBERS = {
+    32: R32_MATCH_ORDER,
+    16: [89, 90, 93, 94, 91, 92, 95, 96],
+    8:  [97, 98, 99, 100],
+    4:  [101, 102],
+    2:  [104],
+}
+THIRD_PLACE_MATCH = 103   # SF losers
 
 
 def assign_third_place_slots(qualified_groups: set[str]) -> dict[int, str]:
@@ -226,15 +267,25 @@ def sample_knockout_winner(
     cache: MatchCache | None = None,
 ) -> str:
     """
-    Sample a knockout match winner. If draw after 90 min, 50/50 shootout.
+    Sample a knockout match winner:
+        90 minutes → if level, 30 minutes of extra time at one-third scoring
+        rates (favors the stronger team) → if still level, 50/50 penalties.
+
+    Penalties as a coin flip is supported by the literature — shootout
+    outcomes correlate only weakly with team strength.
     """
     gi, gj = sample_match(model, team_i, team_j, rng, cache=cache)
-    if gi > gj:
-        return team_i
-    elif gj > gi:
-        return team_j
-    else:
-        return team_i if rng.random() < 0.5 else team_j
+    if gi != gj:
+        return team_i if gi > gj else team_j
+
+    # Extra time — stronger team gets a real edge here
+    if cache is not None:
+        ei, ej = cache.sample_extra_time(team_i, team_j, rng)
+        if ei != ej:
+            return team_i if ei > ej else team_j
+
+    # Penalty shootout
+    return team_i if rng.random() < 0.5 else team_j
 
 
 # ── Simulate a single group ───────────────────────────────────────────────────
@@ -281,6 +332,8 @@ def simulate_tournament(
     model: DixonColesModel,
     rng: np.random.Generator,
     cache: MatchCache | None = None,
+    pairing_counts: dict | None = None,
+    top2_counts: dict | None = None,
 ) -> dict[str, str]:
     """
     Simulate one full World Cup tournament.
@@ -301,6 +354,9 @@ def simulate_tournament(
     for group_name, teams in groups.items():
         ranking, stats = simulate_group(teams, model, rng, cache=cache)
         qualifiers_by_group[group_name] = ranking[:2]
+        if top2_counts is not None:
+            for t in ranking[:2]:
+                top2_counts[t] = top2_counts.get(t, 0) + 1
 
         for i, team in enumerate(ranking):
             if i < 2:
@@ -328,15 +384,30 @@ def simulate_tournament(
     # Winners of each round are promoted to the NEXT round's label;
     # losers keep the label of the round they were eliminated in.
     advance_labels = ["R16", "QF", "SF", "Final", "Winner"]
+    sf_losers: list[str] = []
 
     for label in advance_labels:
+        match_numbers = ROUND_MATCH_NUMBERS[len(remaining)]
         next_round = []
         for k in range(0, len(remaining), 2):
             a, b = remaining[k], remaining[k + 1]
+            if pairing_counts is not None:
+                m_no = match_numbers[k // 2]
+                key = (a, b)
+                pairing_counts.setdefault(m_no, {})
+                pairing_counts[m_no][key] = pairing_counts[m_no].get(key, 0) + 1
             winner = sample_knockout_winner(model, a, b, rng, cache=cache)
             round_reached[winner] = label
+            if label == "Final":   # SF round: record losers for 3rd-place match
+                sf_losers.append(b if winner == a else a)
             next_round.append(winner)
         remaining = next_round
+
+    if pairing_counts is not None and len(sf_losers) == 2:
+        key = (sf_losers[0], sf_losers[1])
+        pairing_counts.setdefault(THIRD_PLACE_MATCH, {})
+        pairing_counts[THIRD_PLACE_MATCH][key] = \
+            pairing_counts[THIRD_PLACE_MATCH].get(key, 0) + 1
 
     return round_reached
 
@@ -351,13 +422,20 @@ def run_simulations(
     model: DixonColesModel,
     n: int = 100_000,
     seed: int = 42,
-) -> pd.DataFrame:
+    return_pairings: bool = False,
+    calibrator=None,
+) -> pd.DataFrame | tuple[pd.DataFrame, dict]:
     """
     Run N full tournament simulations.
 
     Returns a DataFrame with columns:
         team, Group, R32, R16, QF, SF, Final, Winner
     where each value is the probability of reaching that round.
+
+    With return_pairings=True, also returns
+        {match_no: {(team_a, team_b): probability}}
+    for every knockout match slot (73–104), where probability is the share
+    of simulations in which that exact pairing occurred.
     """
     rng = np.random.default_rng(seed)
     all_teams = [t for teams in groups.values() for t in teams]
@@ -365,17 +443,24 @@ def run_simulations(
     # Build match cache — precomputes score-matrix CDFs for all team pairs.
     # One-time cost (~2,256 matrices for 48 teams) replaces per-match
     # score_matrix recomputation inside the simulation loop.
-    print(f"  Precomputing match distributions for {len(all_teams)} teams...", flush=True)
-    cache = MatchCache(model, all_teams, match_importance=1.0, max_goals=7)
+    print(f"  Precomputing match distributions for {len(all_teams)} teams"
+          f"{' (LGBM-calibrated)' if calibrator is not None else ''}...", flush=True)
+    cache = MatchCache(model, all_teams, match_importance=1.0, max_goals=7,
+                       calibrator=calibrator)
 
     # Tally: round_counts[team][round] = count
     round_counts: dict[str, dict[str, int]] = {
         t: {r: 0 for r in ROUND_ORDER} for t in all_teams
     }
 
+    pairing_counts: dict = {} if return_pairings else None
+    top2_counts: dict = {}
+
     print(f"  Running {n:,} simulations...")
     for _ in tqdm(range(n), unit="sim"):
-        results = simulate_tournament(groups, model, rng, cache=cache)
+        results = simulate_tournament(groups, model, rng, cache=cache,
+                                      pairing_counts=pairing_counts,
+                                      top2_counts=top2_counts)
         for team, last_round in results.items():
             idx = ROUND_ORDER.index(last_round)
             # A team "reached" all rounds up to and including last_round
@@ -387,9 +472,17 @@ def run_simulations(
         row = {"team": team}
         for r in ROUND_ORDER:
             row[r] = round_counts[team][r] / n
+        row["top2"] = top2_counts.get(team, 0) / n   # group top-2 (no 3rd route)
         rows.append(row)
 
     df = pd.DataFrame(rows).sort_values("Winner", ascending=False).reset_index(drop=True)
+
+    if return_pairings:
+        pairing_probs = {
+            m_no: {pair: cnt / n for pair, cnt in pairs.items()}
+            for m_no, pairs in pairing_counts.items()
+        }
+        return df, pairing_probs
     return df
 
 
@@ -398,24 +491,33 @@ def run_simulations(
 def validate_against_exact(
     mc_results: pd.DataFrame,
     exact_probs: dict[str, float],
-    tolerance: float = 0.01,
+    tolerance: float = 0.02,
 ) -> None:
     """
-    Compare MC group-stage qualification probabilities against exact enumeration.
-    Prints warnings for teams where MC deviates by more than `tolerance`.
+    Compare MC top-2 group qualification probabilities against the exact
+    enumeration. This is a like-for-like comparison (the previous version
+    wrongly compared exact top-2 vs MC R32, which includes the 3rd-place
+    qualification route and always 'deviated').
+
+    Residual deviation sources: MC sampling noise and the enumeration's
+    expected-goals tiebreaker approximation vs MC's sampled scorelines.
     """
     print("\n=== MC vs Exact cross-validation (top-2 qualification) ===")
     max_dev = 0.0
+    n_flagged = 0
     for team, exact_p in exact_probs.items():
         mc_row = mc_results[mc_results["team"] == team]
-        if mc_row.empty:
+        if mc_row.empty or "top2" not in mc_row.columns:
             continue
-        mc_p = float(mc_row["R32"].values[0])
+        mc_p = float(mc_row["top2"].values[0])
         dev = abs(mc_p - exact_p)
         max_dev = max(max_dev, dev)
-        flag = " *** DEVIATION" if dev > tolerance else ""
-        print(f"  {team:20s}  exact:{exact_p:.3f}  mc:{mc_p:.3f}  dev:{dev:.3f}{flag}")
-    print(f"\nMax deviation: {max_dev:.4f}")
+        if dev > tolerance:
+            n_flagged += 1
+            print(f"  {team:20s}  exact:{exact_p:.3f}  mc:{mc_p:.3f}  "
+                  f"dev:{dev:.3f} *** DEVIATION")
+    print(f"  {n_flagged} teams above tolerance ({tolerance:.0%}); "
+          f"max deviation: {max_dev:.4f}")
 
 
 if __name__ == "__main__":

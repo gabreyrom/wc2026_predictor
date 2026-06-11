@@ -95,6 +95,129 @@ def rolling_form(
     }
 
 
+# ── Fast precomputed form table (for λ covariates) ──────────────────────────
+
+def precompute_form_table(
+    df: pd.DataFrame,
+    n: int = 10,
+    xi: float = 0.003,
+    elo_k: float = 32.0,
+) -> dict[tuple[str, int], float]:
+    """
+    One chronological pass over the full match history computing, for every
+    (team, match_day) pair, the OPPONENT-ADJUSTED momentum: the time-weighted
+    mean of (actual result − Elo-expected result) over the team's last `n`
+    matches STRICTLY BEFORE that day, where result ∈ {0, 0.5, 1}.
+
+    Why opponent-adjusted: raw points-per-game form is confounded by schedule
+    strength — Haiti farming points off weak CONCACAF sides shows "better
+    form" than Spain playing elite opposition. Momentum must measure
+    performance ABOVE expectation, not absolute results.
+
+    A simple flat-K Elo is maintained inside the same pass to provide the
+    expectation; it only needs to rank opponents, not be perfectly tuned.
+
+    Anti-leakage by construction: a match's own result never enters its own
+    momentum value. Keys are (team, day_int), day_int = days since epoch.
+    """
+    from collections import defaultdict, deque
+
+    df = df.sort_values("date")
+    H  = df["home_team"].values
+    A  = df["away_team"].values
+    HS = df["home_score"].values.astype(int)
+    AS = df["away_score"].values.astype(int)
+    days = pd.to_datetime(df["date"]).values.astype("datetime64[D]").astype(int)
+
+    hist: dict[str, deque] = defaultdict(lambda: deque(maxlen=n))
+    elo:  dict[str, float] = defaultdict(lambda: 1500.0)
+    table: dict[tuple[str, int], float] = {}
+
+    for k in range(len(df)):
+        h, a, hs, as_, d = H[k], A[k], HS[k], AS[k], int(days[k])
+
+        # Momentum + draw rate BEFORE this match (strictly past matches only)
+        for team in (h, a):
+            dq = hist[team]
+            if dq:
+                d_arr = np.array([x[0] for x in dq], dtype=float)
+                res   = np.array([x[1] for x in dq], dtype=float)  # actual − expected
+                drw   = np.array([x[2] for x in dq], dtype=float)  # 1 if draw
+                w = np.exp(-xi * (d - d_arr))
+                table[(team, d)] = (
+                    float(np.dot(w, res) / w.sum()),   # momentum
+                    float(np.dot(w, drw) / w.sum()),   # draw rate
+                )
+            else:
+                table[(team, d)] = (0.0, 0.25)         # neutral priors
+
+        # Elo expectation and update (flat K — expectation provider only)
+        e_h = 1.0 / (1.0 + 10 ** (-(elo[h] - elo[a]) / 400.0))
+        s_h = 1.0 if hs > as_ else (0.5 if hs == as_ else 0.0)
+        is_draw = 1.0 if hs == as_ else 0.0
+
+        hist[h].append((d, s_h - e_h, is_draw))
+        hist[a].append((d, (1.0 - s_h) - (1.0 - e_h), is_draw))
+        elo[h] += elo_k * (s_h - e_h)
+        elo[a] += elo_k * ((1.0 - s_h) - (1.0 - e_h))
+
+    # Stash final state so prediction-time momentum can be computed
+    table["__final_hist__"] = hist          # type: ignore[assignment]
+    return table
+
+
+def make_form_diff_fn(df: pd.DataFrame, n: int = 10, xi: float = 0.003):
+    """
+    Build an antisymmetric λ-covariate function
+        form_diff(team_i, team_j, date) = form_i − form_j
+    backed by the precomputed table for historical dates, with an on-demand
+    fallback (cached) for prediction dates not in the table (e.g. WC 2026).
+
+    Suitable for DixonColesModel lambda_feature_fns.
+    """
+    table = precompute_form_table(df, n=n, xi=xi)
+    final_hist = table.pop("__final_hist__")
+    pred_cache: dict[tuple[str, int], tuple[float, float]] = {}
+
+    def _stats(team: str, day: int) -> tuple[float, float]:
+        """(momentum, draw_rate) for team strictly before `day`."""
+        v = table.get((team, day))
+        if v is not None:
+            return v
+        # Prediction date beyond the data: stats from the team's final
+        # n results, time-decayed to the requested day
+        if (team, day) not in pred_cache:
+            dq = final_hist.get(team)
+            if not dq:
+                pred_cache[(team, day)] = (0.0, 0.25)
+            else:
+                d_arr = np.array([x[0] for x in dq], dtype=float)
+                res   = np.array([x[1] for x in dq], dtype=float)
+                drw   = np.array([x[2] for x in dq], dtype=float)
+                w = np.exp(-xi * (day - d_arr))
+                pred_cache[(team, day)] = (
+                    float(np.dot(w, res) / w.sum()),
+                    float(np.dot(w, drw) / w.sum()),
+                )
+        return pred_cache[(team, day)]
+
+    def _day(date) -> int:
+        return int(np.datetime64(pd.Timestamp(date), "D").astype(int))
+
+    def form_diff(team_i: str, team_j: str, date) -> float:
+        """Antisymmetric momentum difference (λ-covariate compatible)."""
+        day = _day(date)
+        return _stats(team_i, day)[0] - _stats(team_j, day)[0]
+
+    def draw_rate_mean(team_i: str, team_j: str, date) -> float:
+        """Symmetric mean draw-proneness of both teams (LGBM feature)."""
+        day = _day(date)
+        return (_stats(team_i, day)[1] + _stats(team_j, day)[1]) / 2.0
+
+    form_diff.draw_rate_mean = draw_rate_mean   # piggy-back accessor
+    return form_diff
+
+
 # ── xG proxy ────────────────────────────────────────────────────────────────
 
 def xg_proxy(
