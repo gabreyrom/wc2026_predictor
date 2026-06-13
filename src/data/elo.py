@@ -12,16 +12,75 @@ import math
 import pandas as pd
 from pathlib import Path
 
-# ── K-factor by match type ───────────────────────────────────────────────────
-K_FACTORS: dict[str, int] = {
-    "World Cup":             60,
-    "World Cup Qualifier":   40,
-    "Continental Championship": 50,
-    "Continental Qualifier": 40,
-    "UEFA Nations League":   40,
-    "CONCACAF Nations League": 40,
-    "Friendly":              20,
-}
+# ── K-factor by match type (confederation-aware) ─────────────────────────────
+# The K-factor — how much a result moves the ratings — depends on the raw
+# tournament name AND, for some categories, the confederations of the two
+# teams. World Cup qualifiers are split by confederation (a UEFA qualifier
+# carries more weight than a minor-confederation one). Friendlies are flat.
+#
+# Ladder:
+#   100  FIFA World Cup, UEFA Euro
+#    90  Copa América
+#    80  UEFA WC qualifying
+#    70  UEFA Nations League, CONMEBOL WC qualifying, Confederations Cup
+#    60  AFCON, AFC Asian Cup, Gold Cup
+#    50  rest-of-confederation WC qualifying, CONCACAF Nations League
+#    40  continental qualifying (Euro/AFCON/Asian/Copa qual), all friendlies
+#    30  minor/regional tournaments (Gulf Cup, AFF, COSAFA, ...)
+
+# Raw tournament names treated as minor/regional (K=30). Everything not listed
+# anywhere — including the literal "Friendly" and unlisted invitationals —
+# falls through to K=40. Extend this set to reclassify more tournaments.
+MINOR_REGIONAL: frozenset[str] = frozenset({
+    "Gulf Cup", "AFF Championship", "COSAFA Cup", "SAFF Cup",
+    "SAFF Championship", "EAFF Championship", "Asian Games", "Island Games",
+    "CFU Caribbean Cup", "CFU Caribbean Cup qualification", "UNCAF Cup",
+    "CECAFA Cup", "WAFF Championship", "Nations Cup", "Pacific Games",
+})
+
+# Continental qualifiers (all K=40)
+_CONTINENTAL_QUAL: frozenset[str] = frozenset({
+    "UEFA Euro qualification", "African Cup of Nations qualification",
+    "AFC Asian Cup qualification", "Copa América qualification",
+})
+
+
+def match_k_factor(tournament: str, home: str, away: str) -> int:
+    """
+    K-factor for a single match, given the raw tournament name and the two
+    teams (the teams determine the confederation for WC-qualifier splits).
+    """
+    from src.data.confederations import CONFEDERATIONS
+    t = tournament
+
+    # ── Fixed by tournament name ─────────────────────────────────────────────
+    if t == "FIFA World Cup" or t == "UEFA Euro":
+        return 100
+    if t == "Copa América":
+        return 90
+    if t == "UEFA Nations League" or t == "Confederations Cup":
+        return 70
+    if t in ("African Cup of Nations", "AFC Asian Cup", "Gold Cup"):
+        return 60
+    if t == "CONCACAF Nations League":
+        return 50
+    if t in _CONTINENTAL_QUAL:
+        return 40
+    if t in MINOR_REGIONAL:
+        return 30
+
+    # ── World Cup qualifying — split by confederation ────────────────────────
+    if t == "FIFA World Cup qualification":
+        confs = {CONFEDERATIONS.get(home), CONFEDERATIONS.get(away)}
+        if "UEFA" in confs:
+            return 80          # at least one UEFA team
+        if "CONMEBOL" in confs:
+            return 70          # CONMEBOL (and no UEFA)
+        return 50              # all other confederations
+
+    # ── Friendlies and any unlisted tournament ───────────────────────────────
+    return 40
+
 
 # Default starting Elo for a new team
 DEFAULT_ELO = 1500
@@ -127,9 +186,8 @@ def compute_elo_ratings(
         if away not in ratings:
             ratings[away] = DEFAULT_ELO
 
-        # K-factor
-        tournament = row.get("tournament", "Friendly")
-        k = K_FACTORS.get(tournament, 30)
+        # K-factor (confederation-aware, from the raw tournament name + teams)
+        k = match_k_factor(row.get("tournament", "Friendly"), home, away)
 
         # Optional time weighting on K
         if time_weight:
@@ -159,13 +217,16 @@ def make_elo_diff_fn(matches: pd.DataFrame, xi: float = 0.003):
     dates beyond the data (e.g. WC 2026 fixtures) use the final ratings.
     The /400 scaling puts the feature on the natural Elo logistic scale.
 
-    Uses tournament_category for K-factors (the K_FACTORS keys match
-    category names, not raw tournament names).
+    K-factors come from match_k_factor (confederation-aware: built from the
+    raw tournament name and the two teams).
     """
     import numpy as np
 
     df = matches.sort_values("date").reset_index(drop=True)
     days = pd.to_datetime(df["date"]).values.astype("datetime64[D]").astype(int)
+    # Raw tournament name per row (falls back to "Friendly" if column absent)
+    tourns = (df["tournament"] if "tournament" in df.columns
+              else pd.Series(["Friendly"] * len(df))).values
 
     ratings: dict[str, float] = {}
     table: dict[tuple[str, int], float] = {}
@@ -183,7 +244,7 @@ def make_elo_diff_fn(matches: pd.DataFrame, xi: float = 0.003):
         table.setdefault((home, d), ratings[home])
         table.setdefault((away, d), ratings[away])
 
-        k = K_FACTORS.get(row.get("tournament_category", "Friendly"), 30)
+        k = match_k_factor(tourns[k_row], home, away)
         ratings[home], ratings[away] = update_elo(
             ratings[home], ratings[away],
             int(row["home_score"]), int(row["away_score"]),
