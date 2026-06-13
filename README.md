@@ -4,7 +4,7 @@ A statistical model that predicts the FIFA World Cup 2026 — every match, every
 
 **How it works, in three sentences:** the model learns how good every national team is at scoring and defending from 32,000 historical matches (recent games count more, home teams get a measured boost), and predicts the probability of every possible scoreline. A second layer corrects those probabilities using squad market values and Elo ratings — two signals that detect changes in a team's real quality before the core model's strength estimates catch up. Finally, it plays the entire World Cup 100,000 times on the official bracket and counts how often each team reaches each round.
 
-On matches from 2022 onward — which no part of the model ever saw during training — it predicts outcomes **20% better than random guessing**, and every modeling decision along the way was kept or rejected based on measured, statistically-tested improvement (details in [Design Decisions](#design-decisions)).
+On matches from 2022 onward — which no part of the model ever saw during training — it predicts outcomes **21% better than random guessing**, and every modeling decision along the way was kept or rejected based on measured, statistically-tested improvement (details in [Design Decisions](#design-decisions)).
 
 ---
 
@@ -174,10 +174,12 @@ wc2026_predictor/
 │
 ├── src/
 │   ├── data/
-│   │   ├── fetch_matches.py       # Download & clean match history
+│   │   ├── fetch_matches.py       # Download & clean match history (+ WC cutoff)
 │   │   ├── fetch_market_values.py # One-time Transfermarkt snapshot builder
 │   │   ├── market_values.py       # Era-snapshot value lookup (no leakage)
-│   │   ├── elo.py                 # Elo ratings + pre-match elo_diff feature
+│   │   ├── elo.py                 # Confederation-aware Elo + pre-match elo_diff
+│   │   ├── confederations.py      # Team → confederation map (Elo K-factor splits)
+│   │   ├── wc_results.py          # Loads played WC matches for conditioning
 │   │   └── features.py           # Rolling form/momentum (tested, rejected — §7)
 │   │
 │   ├── model/
@@ -264,11 +266,11 @@ Each fold's predictions are "what a model would have said at the time" — and t
 | Model | Test log-loss | vs. uniform baseline (1.0986) |
 |---|---|---|
 | Dixon-Coles (+ home advantage) | 0.9261 | +15.7% |
-| **DC + LightGBM (+ values & Elo)** | **0.8779** | **+20.1%** |
+| **DC + LightGBM (+ values & Elo)** | **0.8711** | **+20.7%** |
 
-Statistically significant at each step (calibrator vs raw DC: Δ = −0.048; adding Elo on top of values alone: Δ = −0.010, 95% CI [−0.015, −0.006]; n = 3,378). Every architectural choice in this README faced the same test — improvements that didn't survive it were rejected (§7). The model that actually predicts the tournament is then fitted on *all* data up to the eve of kickoff; the evaluation machinery exists only to say how much to trust it.
+Statistically significant (calibrator vs raw DC: Δ = −0.055, 95% CI [−0.067, −0.044], p ≈ 0). Every architectural choice in this README faced the same test — improvements that didn't survive it were rejected (§7). The model that actually predicts the tournament is then fitted on *all* data up to the eve of kickoff; the evaluation machinery exists only to say how much to trust it.
 
-*(Numbers above are the most recent full validation. After a data refresh — e.g. new qualifiers landing in the source — a `python main.py` re-runs the entire evaluation and prints updated figures; the ~20% headline is stable across refreshes.)*
+*(Test set = international matches from 2022 onward, n = 4,552 — none seen during fitting. A `python main.py` re-runs the full evaluation end to end; the ~20% headline is stable across data refreshes.)*
 
 In one sentence: **the core model is fitted, not cross-validated; the calibrator is cross-validated, but only inside predictions that were already out-of-sample; and the test set is a vault opened once.**
 
@@ -277,7 +279,7 @@ In one sentence: **the core model is fitted, not cross-validated; the calibrator
 A small, CV-tuned LightGBM takes the Dixon-Coles outputs plus context features and re-predicts the win/draw/loss probabilities. Its two most important features are external strength signals:
 
 - **`log(value_i / value_j)`** — squad market value ratio (Transfermarkt), capturing *slow* drift: generational turnover shows in valuations before it shows in results
-- **`elo_diff`** — pre-match Elo difference, capturing *fast* drift: K-factor updates react to a big result immediately, while the core model's time-weighted estimates adjust gradually
+- **`elo_diff`** — pre-match Elo difference, capturing *fast* drift: K-factor updates react to a big result immediately, while the core model's time-weighted estimates adjust gradually. The K-factors are **confederation-aware** (a World Cup result weighs more than a friendly, and a UEFA qualifier more than a minor-confederation one) — see `match_k_factor` in `elo.py`
 
 **Why does this work when the core model already knows team strength?** Because strengths learned from results go stale at different speeds, and each feature corrects a different timescale of staleness. The calibrator's job is drift correction. That's also why these signals live in this second layer rather than inside the likelihood — we tested putting values in the core model, and the team-strength parameters simply absorbed them (see §7). Each feature individually survived a paired-bootstrap test on held-out matches before being adopted.
 
@@ -359,7 +361,7 @@ Quote the **calibrated** probabilities as your point estimate, use the **CI** to
 Every model simplifies; the important thing is knowing what and why. In rough order of how much it matters:
 
 - **Margins of victory come from the core model, not the calibrator.** When market values say a team is better than its results, the simulation makes it *win more often* — but its winning scorelines keep their original shape (it doesn't start winning 4-0 instead of 2-0). Only matters for goal-difference tiebreakers.
-- **The "exact" group tables use a shortcut for tiebreakers** (expected goals instead of every possible scoreline, no head-to-head). Measured cost: up to ~5pp on a team's top-2 probability. The Monte Carlo — which does tiebreakers properly — drives all headline outputs; the shortcut only feeds the display tables.
+- **The "exact" group tables use a shortcut for tiebreakers** (expected goals instead of every possible scoreline, no head-to-head). Measured cost: up to ~6pp on a team's top-2 probability. The Monte Carlo — which does tiebreakers properly — drives all headline outputs; the shortcut only feeds the display tables.
 - **Confidence intervals are approximate.** They capture how uncertain the team strengths are, not whether the model itself is right. Treat them as honest "roughly 90%" ranges.
 - **Matches before 2013 borrow the 2013 market-value snapshot** (no older data exists) — but the calibrator only trains on 2016-onward predictions, so this falls outside its window entirely. With five snapshots (2013–2025), every calibration-era match now gets a genuinely era-appropriate value.
 - **Penalties are a coin flip** (extra time isn't — it's modeled). The literature backs this one.
