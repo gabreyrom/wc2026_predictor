@@ -35,6 +35,7 @@ from collections import defaultdict
 
 from src.model.dixon_coles import DixonColesModel, fit as fit_dc
 from src.data.market_values import log_value_ratio
+from src.data.elo import elo_diff
 
 
 # ── Split ─────────────────────────────────────────────────────────────────────
@@ -108,6 +109,8 @@ def predict_matches(
         "Continental Championship": 0.7,
         "World Cup Qualifier":      0.3,
         "Continental Qualifier":    0.3,
+        "UEFA Nations League":      0.3,
+        "CONCACAF Nations League":  0.3,
         "Friendly":                 0.0,
     }
 
@@ -148,6 +151,7 @@ def predict_matches(
             ),
             "match_importance":    imp,
             "log_value_ratio":     log_value_ratio(home, away, row["date"]),
+            "elo_diff":            elo_diff(home, away, row["date"]),
             "actual":              actual,
             "log_loss":            ll,
             **{name: fn(home, away, row["date"])
@@ -261,6 +265,7 @@ def oof_calibration_report(
     fit_data: pd.DataFrame,
     xi: float = 0.003,
     fold_cutoffs: list[str] | None = None,
+    extra_feature_fns: dict | None = None,
 ) -> tuple[dict, "LGBMCalibrator"]:  # type: ignore[name-defined]
     """
     Rolling-origin out-of-fold calibration:
@@ -301,7 +306,7 @@ def oof_calibration_report(
         print(f"\n  Fold {k+1}: fit < {c0[:7]}  →  predict {c0[:7]} – {c1[:7]} "
               f"(n_train={len(train):,}, n_window={len(window):,})")
         fold_model = fit_dc(train, xi=xi)
-        pf = predict_matches(fold_model, window)
+        pf = predict_matches(fold_model, window, extra_feature_fns=extra_feature_fns)
         pf["fold"] = f"{c0[:4]}–{c1[:4]}"
         print(f"  Fold {k+1} DC out-of-sample log-loss: {log_loss_score(pf):.4f}  "
               f"(n={len(pf):,})")
@@ -316,7 +321,8 @@ def oof_calibration_report(
     print(f"\n  Test predictor: fit < {test_cut[:7]}, score {test_cut[:7]}+ ...")
     test_model = fit_dc(fit_data[fit_data["date"] < test_cut].copy(), xi=xi)
     test_pred  = predict_matches(
-        test_model, fit_data[fit_data["date"] >= test_cut].copy()
+        test_model, fit_data[fit_data["date"] >= test_cut].copy(),
+        extra_feature_fns=extra_feature_fns,
     )
     dc_test_ll = log_loss_score(test_pred)
     print(f"  DC test log-loss: {dc_test_ll:.4f}  (n={len(test_pred):,})")

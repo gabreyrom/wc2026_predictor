@@ -55,6 +55,7 @@ def main(
     save_calibrator: bool = True,
     match: tuple[str, str] | None = None,
     n_bootstrap: int = 500,
+    ignore_results: bool = False,
 ):
     print("=" * 60)
     print("   FIFA WORLD CUP 2026 PREDICTOR")
@@ -115,10 +116,21 @@ def main(
             if save_calibrator:
                 calibrator.save("models/lgbm_calibrator.joblib")
 
+    # ── Step 3.9: Load played WC results (conditioning) ──────────────────────
+    fixed_results: dict = {}
+    ko_winners: dict = {}
+    if not ignore_results:
+        from src.data.wc_results import load_played_results
+        fixed_results, ko_winners = load_played_results()
+        if fixed_results or ko_winners:
+            print(f"\n[3.9/6] Conditioning on played WC matches: "
+                  f"{len(fixed_results)} group, {len(ko_winners)} knockout "
+                  f"(model parameters stay frozen at the pre-tournament fit)")
+
     # ── Step 4: Exact group stage (LGBM-calibrated outcome masses) ───────────
     print("\n[4/6] Exact group stage enumeration (3^6 per group)...")
     group_pos_probs, group_third_dists = simulate_all_groups(
-        GROUPS, model, calibrator=calibrator,
+        GROUPS, model, calibrator=calibrator, fixed_results=fixed_results,
     )
     exact_qual_probs = qualification_probs(group_pos_probs)
 
@@ -127,6 +139,7 @@ def main(
     mc_results, ko_pairings = run_simulations(
         GROUPS, model, n=n_mc, seed=seed, return_pairings=True,
         calibrator=calibrator,
+        fixed_results=fixed_results, ko_winners=ko_winners,
     )
     validate_against_exact(mc_results, exact_qual_probs)
 
@@ -195,6 +208,8 @@ if __name__ == "__main__":
                         help="Print a detailed match report (e.g. --match Brazil France)")
     parser.add_argument("--n-bootstrap", type=int, default=500,
                         help="Bootstrap samples for match report CIs (default 500)")
+    parser.add_argument("--ignore-results", action="store_true",
+                        help="Ignore played WC matches (pure pre-tournament predictions)")
     args = parser.parse_args()
 
     main(
@@ -206,4 +221,5 @@ if __name__ == "__main__":
         save_calibrator=not args.no_save_calibrator,
         match=tuple(args.match) if args.match else None,
         n_bootstrap=args.n_bootstrap,
+        ignore_results=args.ignore_results,
     )

@@ -81,10 +81,11 @@ def modal_bracket(
         print(f"  {group_name:<6} {pred_1st:<20} {pred_2nd:<20} "
               f"{pred_3rd} ({third_qual:.0%})")
 
-    # Knockout modal winner
-    top_team = mc_results.iloc[0]
-    print(f"\nPredicted Champion: {top_team['team']} "
-          f"(P={top_team['Winner']:.1%})")
+    # Top 5 most probable champions
+    top5 = mc_results.nlargest(5, "Winner")
+    print("\nTop 5 possible champions:")
+    for rank, (_, row) in enumerate(top5.iterrows(), 1):
+        print(f"  {rank}. {row['team']:<20s} {row['Winner']:.1%}")
     print("=" * 60)
 
 
@@ -151,6 +152,20 @@ def sensitivity_analysis(
               f"+{elo_delta:.0f}Elo={up_win:.1%}  -{elo_delta:.0f}Elo={down_win:.1%}")
 
     return pd.DataFrame(rows)
+
+
+# ── Daily output folder ───────────────────────────────────────────────────────
+
+def _daily_dir(results_dir: str = "results"):
+    """
+    Return (and create) today's output folder: results/YYYY-MM-DD/.
+    All of a day's outputs live together; same-day reruns overwrite in place.
+    """
+    from datetime import date
+    from pathlib import Path
+    out = Path(results_dir) / date.today().isoformat()
+    out.mkdir(parents=True, exist_ok=True)
+    return out
 
 
 # ── Tournament advancement table ─────────────────────────────────────────────
@@ -273,9 +288,7 @@ def save_match_scorelines(
                 })
 
     df = pd.DataFrame(rows)
-    out_dir = Path(results_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{date.today().isoformat()}_match_scorelines.csv"
+    path = _daily_dir(results_dir) / "match_scorelines.csv"
     df.to_csv(path, index=False)
     n_matches = len(df) // top_n
     print(f"Saved top-{top_n} scorelines for {n_matches} matches -> {path}")
@@ -346,7 +359,9 @@ def save_match_probabilities(
         }
         if calibrator is not None:
             from src.data.market_values import log_value_ratio
+            from src.data.elo import elo_diff
             pred["log_value_ratio"] = log_value_ratio(home, away, "2026-06-11")
+            pred["elo_diff"] = elo_diff(home, away, "2026-06-11")
             cal = calibrator.predict_proba_row(pred)
             row["cal_home"] = round(cal["home"], 4)
             row["cal_draw"] = round(cal["draw"], 4)
@@ -377,9 +392,7 @@ def save_match_probabilities(
                 rows.append(_row(stage, m_no, None, home, away, p))
 
     df = pd.DataFrame(rows)
-    out_dir = Path(results_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{date.today().isoformat()}_match_probabilities.csv"
+    path = _daily_dir(results_dir) / "match_probabilities.csv"
     df.to_csv(path, index=False)
     n_group = (df["stage"] == "group").sum()
     n_ko = df["match_no"].nunique()
@@ -399,26 +412,23 @@ def save_results(
     """
     Save prediction outputs in two places:
       1. `latest_path` — canonical "current" file, overwritten each run
-      2. `results_dir/YYYY-MM-DD_*.csv` — date-stamped snapshot, giving an
-         audit trail of how predictions evolve across runs/matchdays
-         (same-day reruns overwrite that day's snapshot)
+      2. `results_dir/YYYY-MM-DD/*.csv` — one folder per day holding all of
+         that day's outputs, giving an audit trail of how predictions evolve
+         across matchdays (same-day reruns overwrite in place)
 
     Args:
         mc_results      : tournament advancement table from run_simulations()
         group_pos_probs : optional {group: {team: {1st/2nd/3rd/4th/...}}}
                           from simulate_all_groups()
     """
-    from datetime import date
     from pathlib import Path
 
-    stamp = date.today().isoformat()
-    out_dir = Path(results_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    day_dir = _daily_dir(results_dir)
     Path(latest_path).parent.mkdir(parents=True, exist_ok=True)
 
     # Tournament advancement table
     mc_results.to_csv(latest_path, index=False)
-    versioned = out_dir / f"{stamp}_tournament_probs.csv"
+    versioned = day_dir / "tournament_probs.csv"
     mc_results.to_csv(versioned, index=False)
     print(f"Saved results -> {latest_path}")
     print(f"             -> {versioned}")
@@ -442,7 +452,7 @@ def save_results(
         group_df = pd.DataFrame(rows).sort_values(
             ["group", "p_1st"], ascending=[True, False]
         )
-        group_versioned = out_dir / f"{stamp}_group_position_probs.csv"
+        group_versioned = day_dir / "group_position_probs.csv"
         group_df.to_csv(group_versioned, index=False)
         print(f"             -> {group_versioned}")
 

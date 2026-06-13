@@ -18,6 +18,8 @@ K_FACTORS: dict[str, int] = {
     "World Cup Qualifier":   40,
     "Continental Championship": 50,
     "Continental Qualifier": 40,
+    "UEFA Nations League":   40,
+    "CONCACAF Nations League": 40,
     "Friendly":              20,
 }
 
@@ -144,6 +146,78 @@ def compute_elo_ratings(
         )
 
     return ratings
+
+
+def make_elo_diff_fn(matches: pd.DataFrame, xi: float = 0.003):
+    """
+    Build an antisymmetric feature function
+        elo_diff(team_i, team_j, date) = (elo_i − elo_j) / 400
+    using each team's Elo STRICTLY BEFORE the given date (anti-leakage: a
+    match's own result never enters its own feature).
+
+    One chronological pass stores the pre-match rating per (team, day);
+    dates beyond the data (e.g. WC 2026 fixtures) use the final ratings.
+    The /400 scaling puts the feature on the natural Elo logistic scale.
+
+    Uses tournament_category for K-factors (the K_FACTORS keys match
+    category names, not raw tournament names).
+    """
+    import numpy as np
+
+    df = matches.sort_values("date").reset_index(drop=True)
+    days = pd.to_datetime(df["date"]).values.astype("datetime64[D]").astype(int)
+
+    ratings: dict[str, float] = {}
+    table: dict[tuple[str, int], float] = {}
+
+    for k_row in range(len(df)):
+        row = df.iloc[k_row]
+        home, away = row["home_team"], row["away_team"]
+        d = int(days[k_row])
+
+        ratings.setdefault(home, DEFAULT_ELO)
+        ratings.setdefault(away, DEFAULT_ELO)
+
+        # Pre-match snapshot (only first match of the day per team is stored;
+        # same-day double-headers are essentially nonexistent internationally)
+        table.setdefault((home, d), ratings[home])
+        table.setdefault((away, d), ratings[away])
+
+        k = K_FACTORS.get(row.get("tournament_category", "Friendly"), 30)
+        ratings[home], ratings[away] = update_elo(
+            ratings[home], ratings[away],
+            int(row["home_score"]), int(row["away_score"]),
+            k=k, neutral=bool(row.get("neutral", False)),
+        )
+
+    def _elo(team: str, day: int) -> float:
+        v = table.get((team, day))
+        if v is None:
+            v = ratings.get(team, DEFAULT_ELO)   # prediction date: final rating
+        return v
+
+    def elo_diff(team_i: str, team_j: str, date) -> float:
+        import numpy as np
+        day = int(np.datetime64(pd.Timestamp(date), "D").astype(int))
+        return (_elo(team_i, day) - _elo(team_j, day)) / 400.0
+
+    return elo_diff
+
+
+_ELO_DIFF_FN = None
+
+
+def elo_diff(team_i: str, team_j: str, date) -> float:
+    """
+    Module-level antisymmetric Elo-difference feature, (elo_i − elo_j)/400,
+    using pre-match ratings (anti-leakage). Lazily builds the rating table
+    from the processed match history on first call.
+    """
+    global _ELO_DIFF_FN
+    if _ELO_DIFF_FN is None:
+        from src.data.fetch_matches import fetch_and_process
+        _ELO_DIFF_FN = make_elo_diff_fn(fetch_and_process(force=False))
+    return _ELO_DIFF_FN(team_i, team_j, date)
 
 
 def load_ratings_from_csv(path: str | Path) -> dict[str, float]:

@@ -474,6 +474,8 @@ def fit(
         "Continental Championship": 0.7,
         "World Cup Qualifier":      0.3,
         "Continental Qualifier":    0.3,
+        "UEFA Nations League":      0.3,
+        "CONCACAF Nations League":  0.3,
         "Friendly":                 0.0,
     }
     match_importance_col = (

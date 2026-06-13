@@ -265,15 +265,24 @@ def sample_knockout_winner(
     team_j: str,
     rng: np.random.Generator,
     cache: MatchCache | None = None,
+    ko_winners: dict | None = None,
 ) -> str:
     """
     Sample a knockout match winner:
         90 minutes → if level, 30 minutes of extra time at one-third scoring
         rates (favors the stronger team) → if still level, 50/50 penalties.
 
+    If this exact pairing has already been PLAYED (in ko_winners), the real
+    winner is returned — no sampling.
+
     Penalties as a coin flip is supported by the literature — shootout
     outcomes correlate only weakly with team strength.
     """
+    if ko_winners:
+        real = ko_winners.get(frozenset({team_i, team_j}))
+        if real is not None:
+            return real
+
     gi, gj = sample_match(model, team_i, team_j, rng, cache=cache)
     if gi != gj:
         return team_i if gi > gj else team_j
@@ -295,14 +304,19 @@ def simulate_group(
     model: DixonColesModel,
     rng: np.random.Generator,
     cache: MatchCache | None = None,
+    fixed_results: dict | None = None,
 ) -> tuple[list[str], dict]:
     """
     Simulate one group: sample all 6 match results, return ranking and stats.
+    Matches already PLAYED (in fixed_results) use their actual scoreline
+    instead of being sampled — the simulation conditions on reality.
 
     Returns:
         ranking : list of teams [1st, 2nd, 3rd, 4th]
         stats   : {team: {pts, gd, gf}}
     """
+    from src.data.wc_results import lookup_group_result
+
     matches = [
         (teams[i], teams[j])
         for i in range(len(teams))
@@ -313,7 +327,11 @@ def simulate_group(
     stats: dict[str, dict] = {t: {"pts": 0, "gd": 0, "gf": 0} for t in teams}
 
     for home, away in matches:
-        hg, ag = sample_match(model, home, away, rng, cache=cache)
+        actual = lookup_group_result(fixed_results or {}, home, away)
+        if actual is not None:
+            hg, ag = actual
+        else:
+            hg, ag = sample_match(model, home, away, rng, cache=cache)
         results[(home, away)] = (hg, ag)
         stats[home]["gf"] += hg; stats[home]["gd"] += hg - ag
         stats[away]["gf"] += ag; stats[away]["gd"] += ag - hg
@@ -334,6 +352,8 @@ def simulate_tournament(
     cache: MatchCache | None = None,
     pairing_counts: dict | None = None,
     top2_counts: dict | None = None,
+    fixed_results: dict | None = None,
+    ko_winners: dict | None = None,
 ) -> dict[str, str]:
     """
     Simulate one full World Cup tournament.
@@ -352,7 +372,8 @@ def simulate_tournament(
     third_place_teams: list[dict] = []
 
     for group_name, teams in groups.items():
-        ranking, stats = simulate_group(teams, model, rng, cache=cache)
+        ranking, stats = simulate_group(teams, model, rng, cache=cache,
+                                        fixed_results=fixed_results)
         qualifiers_by_group[group_name] = ranking[:2]
         if top2_counts is not None:
             for t in ranking[:2]:
@@ -396,7 +417,8 @@ def simulate_tournament(
                 key = (a, b)
                 pairing_counts.setdefault(m_no, {})
                 pairing_counts[m_no][key] = pairing_counts[m_no].get(key, 0) + 1
-            winner = sample_knockout_winner(model, a, b, rng, cache=cache)
+            winner = sample_knockout_winner(model, a, b, rng, cache=cache,
+                                            ko_winners=ko_winners)
             round_reached[winner] = label
             if label == "Final":   # SF round: record losers for 3rd-place match
                 sf_losers.append(b if winner == a else a)
@@ -424,6 +446,8 @@ def run_simulations(
     seed: int = 42,
     return_pairings: bool = False,
     calibrator=None,
+    fixed_results: dict | None = None,
+    ko_winners: dict | None = None,
 ) -> pd.DataFrame | tuple[pd.DataFrame, dict]:
     """
     Run N full tournament simulations.
@@ -456,11 +480,17 @@ def run_simulations(
     pairing_counts: dict = {} if return_pairings else None
     top2_counts: dict = {}
 
+    if fixed_results or ko_winners:
+        print(f"  Conditioning on {len(fixed_results or {})} played group "
+              f"matches and {len(ko_winners or {})} knockout results")
+
     print(f"  Running {n:,} simulations...")
     for _ in tqdm(range(n), unit="sim"):
         results = simulate_tournament(groups, model, rng, cache=cache,
                                       pairing_counts=pairing_counts,
-                                      top2_counts=top2_counts)
+                                      top2_counts=top2_counts,
+                                      fixed_results=fixed_results,
+                                      ko_winners=ko_winners)
         for team, last_round in results.items():
             idx = ROUND_ORDER.index(last_round)
             # A team "reached" all rounds up to and including last_round

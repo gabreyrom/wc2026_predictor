@@ -78,6 +78,7 @@ FEATURE_COLS = [
     "abs_alpha_diff",
     "match_importance",
     "log_value_ratio",    # log(squad value_i / value_j), NaN if not covered
+    "elo_diff",           # (pre-match elo_i − elo_j) / 400 — fast drift signal
 ]
 
 LABEL_MAP: dict[str, int] = {"home": 0, "draw": 1, "away": 2}
@@ -345,6 +346,7 @@ class LGBMCalibrator:
             "abs_alpha_diff":   dc_pred.get("abs_alpha_diff", 0.0),
             "match_importance": dc_pred.get("match_importance", 1.0),
             "log_value_ratio":  dc_pred.get("log_value_ratio", float("nan")),
+            "elo_diff":         dc_pred.get("elo_diff", float("nan")),
         }
         df = pd.DataFrame([row])
         X = _to_feature_df(df)

@@ -43,15 +43,32 @@ TM_ALIASES = {
 }
 
 # Season IDs to snapshot: season_id 2019 ≈ values during 2019/20, etc.
-# Chosen to sit near the middle of the calibration eras:
-#   2019 → matches 2018–2020, 2022 → 2021–2023, 2025 → 2024+/WC 2026
-SNAPSHOT_SEASONS = {"2019-07-01": 2019, "2022-07-01": 2022, "2025-07-01": 2025}
+# 2013/2016 extend the grid backward so the value TREND (Δ between
+# consecutive snapshots) is defined throughout the calibration window.
+SNAPSHOT_SEASONS = {
+    "2013-07-01": 2013,
+    "2016-07-01": 2016,
+    "2019-07-01": 2019,
+    "2022-07-01": 2022,
+    "2025-07-01": 2025,
+}
 
 
-def fetch(url: str) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return r.read().decode("utf-8", errors="ignore")
+def fetch(url: str, retries: int = 4) -> str:
+    """GET with exponential-backoff retries — Transfermarkt throws transient
+    502s under sustained polite crawling; one hiccup must not kill a 17-min run."""
+    last_err: Exception | None = None
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return r.read().decode("utf-8", errors="ignore")
+        except Exception as e:                      # HTTPError, URLError, timeout
+            last_err = e
+            wait = 3.0 * (2 ** attempt)
+            print(f"    retry {attempt+1}/{retries} in {wait:.0f}s ({e})", flush=True)
+            time.sleep(wait)
+    raise last_err
 
 
 def parse_value(text: str) -> float:
@@ -94,14 +111,26 @@ def fetch_team_directory(max_pages: int = 9) -> dict[str, dict]:
     return directory
 
 
-def fetch_squad_total(slug: str, team_id: int, season_id: int) -> float:
-    """Sum player market values (M€) on a historical season squad page."""
+def fetch_squad_total(slug: str, team_id: int, season_id: int) -> tuple[float, float, float]:
+    """
+    From a historical season squad page, return:
+        (total squad value M€, average age years, top-3 value share in [0,1])
+
+    top-3 share = fraction of total squad value held by the 3 most valuable
+    players — a key-player-dependence measure ("star concentration").
+    All era-appropriate: the page shows values/ages as of that season.
+    """
     url = f"{BASE}/{slug}/kader/verein/{team_id}/saison_id/{season_id}/plus/1"
     html = fetch(url)
-    vals = re.findall(
+    vals = [parse_value(v) for v in re.findall(
         r'marktwertverlauf/spieler/\d+">(€[\d.,]+(?:bn|m|k))</a>', html
-    )
-    return round(sum(parse_value(v) for v in vals), 1)
+    )]
+    total = sum(vals)
+    top3_share = (round(sum(sorted(vals, reverse=True)[:3]) / total, 4)
+                  if total > 0 else float("nan"))
+    ages = [int(a) for a in re.findall(r"\d{2}/\d{2}/\d{4} \((\d{1,2})\)", html)]
+    avg_age = round(sum(ages) / len(ages), 2) if ages else float("nan")
+    return round(total, 1), avg_age, top3_share
 
 
 def main(all_teams: bool = False) -> None:
@@ -150,22 +179,32 @@ def main(all_teams: bool = False) -> None:
             print("Directory sample:", sorted(directory.keys())[:40])
             raise SystemExit("Fix TM_ALIASES for the unmatched teams and re-run.")
 
-    # Historical snapshots per team
+    # Historical snapshots per team (value + average age + star concentration)
     snapshots: dict[str, dict[str, float]] = {d: {} for d in SNAPSHOT_SEASONS}
+    age_snapshots: dict[str, dict[str, float]] = {d: {} for d in SNAPSHOT_SEASONS}
+    top3_snapshots: dict[str, dict[str, float]] = {d: {} for d in SNAPSHOT_SEASONS}
     for i, (team, info) in enumerate(resolved.items(), 1):
         for date_key, season in SNAPSHOT_SEASONS.items():
-            v = fetch_squad_total(info["slug"], info["id"], season)
+            try:
+                v, age, top3 = fetch_squad_total(info["slug"], info["id"], season)
+            except Exception as e:
+                print(f"    SKIP {team} {date_key}: {e}", flush=True)
+                v = age = top3 = float("nan")
             snapshots[date_key][team] = v
+            age_snapshots[date_key][team] = age
+            top3_snapshots[date_key][team] = top3
             time.sleep(0.8)
         print(f"  [{i:3d}/{len(resolved)}] {team:<24s} "
               + "  ".join(f"{d[:4]}: {snapshots[d][team]:>7.1f}M€"
-                          for d in SNAPSHOT_SEASONS))
+                          for d in SNAPSHOT_SEASONS), flush=True)
 
     out = {
         "source": "transfermarkt.com (season squad pages, era-appropriate values)",
-        "unit": "million EUR",
+        "unit": "million EUR / years / share",
         "team_ids": {t: info["id"] for t, info in resolved.items()},
         "snapshots": snapshots,
+        "age_snapshots": age_snapshots,
+        "top3_share_snapshots": top3_snapshots,
     }
     path = Path("data/market_values.json")
     path.write_text(json.dumps(out, indent=2, ensure_ascii=False))

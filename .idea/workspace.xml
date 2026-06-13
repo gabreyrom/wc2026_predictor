@@ -4,12 +4,22 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="Implement home advantage logic for WC 2026 matches; add paired bootstrap significance test and save match scorelines functionality">
+    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="Add log_value_ratio feature for team comparisons; implement market value data fetching and caching">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/wc2026_predictor.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/wc2026_predictor.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/market_values.json" beforeDir="false" afterPath="$PROJECT_DIR$/data/market_values.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/processed/elo_ratings.csv" beforeDir="false" afterPath="$PROJECT_DIR$/data/processed/elo_ratings.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/processed/matches_clean.csv" beforeDir="false" afterPath="$PROJECT_DIR$/data/processed/matches_clean.csv" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/data/processed/wc2026_probs.csv" beforeDir="false" afterPath="$PROJECT_DIR$/data/processed/wc2026_probs.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/raw/results.csv" beforeDir="false" afterPath="$PROJECT_DIR$/data/raw/results.csv" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/data/features.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/features.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/data/elo.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/elo.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/data/fetch_market_values.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/fetch_market_values.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/data/fetch_matches.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/fetch_matches.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/data/market_values.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/market_values.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/model/calibration.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/model/calibration.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/model/dixon_coles.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/model/dixon_coles.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/model/lgbm_calibrator.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/model/lgbm_calibrator.py" afterDir="false" />
@@ -97,7 +107,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1781040041722</updated>
-      <workItem from="1781040042735" duration="27607000" />
+      <workItem from="1781040042735" duration="42579000" />
     </task>
     <task id="LOCAL-00001" summary="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure.">
       <option name="closed" value="true" />
@@ -211,7 +221,15 @@
       <option name="project" value="LOCAL" />
       <updated>1781146815798</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="Add log_value_ratio feature for team comparisons; implement market value data fetching and caching">
+      <option name="closed" value="true" />
+      <created>1781207431428</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1781207431428</updated>
+    </task>
+    <option name="localTasksCounter" value="16" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -231,14 +249,15 @@
     <MESSAGE value="Refactor Monte Carlo simulation output validation and implement official FIFA 2026 R32 bracket structure" />
     <MESSAGE value="Update README and results saving logic; implement official FIFA 2026 knockout bracket" />
     <MESSAGE value="Implement home advantage logic for WC 2026 matches; add paired bootstrap significance test and save match scorelines functionality" />
-    <option name="LAST_COMMIT_MESSAGE" value="Implement home advantage logic for WC 2026 matches; add paired bootstrap significance test and save match scorelines functionality" />
+    <MESSAGE value="Add log_value_ratio feature for team comparisons; implement market value data fetching and caching" />
+    <option name="LAST_COMMIT_MESSAGE" value="Add log_value_ratio feature for team comparisons; implement market value data fetching and caching" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/main.py</url>
-          <line>176</line>
+          <line>189</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>
       </breakpoints>

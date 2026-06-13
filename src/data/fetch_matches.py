@@ -1,12 +1,18 @@
 """
 Fetch historical international match results.
 
-Primary source: GitHub dataset by martj42
-  https://github.com/martj42/international-football-results
+Primary source: canonical GitHub dataset by martj42
+  https://github.com/martj42/international_results
 
-Provides results from 1872 to present, updated regularly.
+Provides results from 1872 to present, updated within days of each match.
 Columns: date, home_team, away_team, home_score, away_score,
          tournament, city, country, neutral
+
+NOTE: this dataset pre-populates WC 2026 fixtures and fills scores as matches
+are played. Training data is capped at TRAIN_END_DATE (WC kickoff) so the
+tournament's own matches never enter model fitting — they enter ONLY through
+the conditioning system (data/wc2026_results.csv), keeping the prediction
+task leakage-free and the model parameters frozen at their pre-tournament fit.
 """
 
 import io
@@ -17,28 +23,15 @@ from pathlib import Path
 RAW_DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "raw"
 PROCESSED_DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "processed"
 
-# Direct CSV download URL (raw GitHub)
+# Direct CSV download URL (raw GitHub — canonical martj42 source)
 RESULTS_URL = (
-    "https://raw.githubusercontent.com/VictorCCole/"
-    "Visual-Analysis-of-International-Football-Results-1872-2025/main/results.csv"
+    "https://raw.githubusercontent.com/martj42/"
+    "international_results/master/results.csv"
 )
 
-# Only include tournaments with meaningful competitive context
-RELEVANT_TOURNAMENTS = {
-    "FIFA World Cup",
-    "FIFA World Cup qualification",
-    "UEFA Euro",
-    "UEFA Euro qualification",
-    "Copa América",
-    "Copa América qualification",
-    "AFC Asian Cup",
-    "AFC Asian Cup qualification",
-    "Africa Cup of Nations",
-    "Africa Cup of Nations qualification",
-    "CONCACAF Gold Cup",
-    "CONCACAF Championship",
-    "Friendly",
-}
+# Hard training cutoff: WC 2026 kickoff. Matches on/after this date are
+# excluded from the processed/training set (they flow through conditioning).
+TRAIN_END_DATE = "2026-06-11"
 
 # Minimum date to keep (older data is less predictive)
 MIN_DATE = "1990-01-01"
@@ -76,16 +69,18 @@ def clean_and_filter(df: pd.DataFrame) -> pd.DataFrame:
     """
     Filter and clean the raw results DataFrame.
 
-    - Keep only post-1990 matches
+    - Keep only post-1990 matches, before the WC 2026 cutoff
     - Standardise tournament category names
-    - Drop rows with missing scores
+    - Drop rows with missing scores (incl. unplayed WC fixture placeholders)
     - Add a 'neutral' boolean column if not present
     """
     df = df.copy()
 
-    # Standardise date
+    # Standardise date and apply the training window [MIN_DATE, TRAIN_END_DATE).
+    # The upper bound keeps WC 2026 matches out of training — they enter only
+    # via the conditioning system (data/wc2026_results.csv).
     df["date"] = pd.to_datetime(df["date"])
-    df = df[df["date"] >= MIN_DATE].copy()
+    df = df[(df["date"] >= MIN_DATE) & (df["date"] < TRAIN_END_DATE)].copy()
 
     # Drop incomplete rows
     df = df.dropna(subset=["home_score", "away_score"])
@@ -95,20 +90,29 @@ def clean_and_filter(df: pd.DataFrame) -> pd.DataFrame:
     # Normalise tournament field
     df["tournament"] = df["tournament"].fillna("Friendly").str.strip()
 
-    # Map source tournament names to our K-factor categories
+    # Map source (martj42) tournament names to our K-factor categories.
+    # Names must match the dataset EXACTLY — e.g. it's "African Cup of Nations"
+    # (not "Africa") and "Gold Cup" (not "CONCACAF Gold Cup"). The two Nations
+    # Leagues get their own categories (competitive, qualifier-tier weight, but
+    # tracked separately so they can be tuned independently). Regional cups
+    # (CECAFA, COSAFA, Gulf, AFF, SAFF, Caribbean, Island Games, UNCAF) are
+    # friendly-tier and fall through.
     tournament_map = {
-        "FIFA World Cup":                     "World Cup",
+        "FIFA World Cup":                      "World Cup",
         "FIFA World Cup qualification":        "World Cup Qualifier",
         "UEFA Euro":                           "Continental Championship",
         "UEFA Euro qualification":             "Continental Qualifier",
+        "UEFA Nations League":                 "UEFA Nations League",
         "Copa América":                        "Continental Championship",
         "Copa América qualification":          "Continental Qualifier",
         "AFC Asian Cup":                       "Continental Championship",
         "AFC Asian Cup qualification":         "Continental Qualifier",
-        "Africa Cup of Nations":               "Continental Championship",
-        "Africa Cup of Nations qualification": "Continental Qualifier",
-        "CONCACAF Gold Cup":                   "Continental Championship",
+        "African Cup of Nations":              "Continental Championship",
+        "African Cup of Nations qualification":"Continental Qualifier",
+        "Gold Cup":                            "Continental Championship",
         "CONCACAF Championship":               "Continental Qualifier",
+        "CONCACAF Nations League":             "CONCACAF Nations League",
+        "Confederations Cup":                  "Continental Championship",
         "Friendly":                            "Friendly",
     }
     df["tournament_category"] = df["tournament"].map(tournament_map).fillna("Friendly")

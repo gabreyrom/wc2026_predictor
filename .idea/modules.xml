@@ -2,6 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+      <module fileurl="file://$USER_HOME$/PycharmProjects/KaggleReinforcementLearning/.idea/KaggleReinforcementLearning.iml" filepath="$USER_HOME$/PycharmProjects/KaggleReinforcementLearning/.idea/KaggleReinforcementLearning.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/wc2026_predictor.iml" filepath="$PROJECT_DIR$/.idea/wc2026_predictor.iml" />
     </modules>
   </component>

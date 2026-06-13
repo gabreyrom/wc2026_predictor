@@ -83,7 +83,9 @@ def calibrated_score_matrix(
         return mat
 
     from src.data.market_values import log_value_ratio
+    from src.data.elo import elo_diff
     pred["log_value_ratio"] = log_value_ratio(home, away, model.default_predict_date)
+    pred["elo_diff"] = elo_diff(home, away, model.default_predict_date)
     cal = calibrator.predict_proba_row(pred)
 
     n = mat.shape[0]
@@ -277,6 +279,7 @@ def enumerate_group(
     teams: list[str],
     model: DixonColesModel,
     calibrator=None,
+    fixed_results: dict | None = None,
 ) -> tuple[dict[str, dict[str, float]], dict]:
     """
     Exactly enumerate all 3^6 = 729 outcome combinations for a group of 4 teams.
@@ -299,9 +302,22 @@ def enumerate_group(
         for j in range(i + 1, len(teams))
     ]  # 6 matchups
 
-    # Precompute 3-outcome distributions for each match (fast: O(MAX_GOALS_SIM²))
-    outcome_data = [match_outcome_probs(model, h, a, calibrator=calibrator)
-                    for h, a in matches]
+    # Precompute 3-outcome distributions for each match (fast: O(MAX_GOALS_SIM²)).
+    # PLAYED matches collapse to a single certain branch carrying the ACTUAL
+    # goals — the enumeration conditions on reality, and tiebreakers use real
+    # scorelines instead of expected goals for those matches.
+    from src.data.wc_results import lookup_group_result
+    outcome_data = []
+    for h, a in matches:
+        actual = lookup_group_result(fixed_results or {}, h, a)
+        if actual is not None:
+            hg, ag = actual
+            outcome = "H" if hg > ag else ("D" if hg == ag else "A")
+            outcome_data.append([(outcome, 1.0, float(hg), float(ag))])
+        else:
+            outcome_data.append(
+                match_outcome_probs(model, h, a, calibrator=calibrator)
+            )
 
     # Result accumulators
     position_probs: dict[str, dict[str, float]] = {
@@ -366,6 +382,7 @@ def simulate_all_groups(
     groups: dict[str, list[str]],
     model: DixonColesModel,
     calibrator=None,
+    fixed_results: dict | None = None,
 ) -> tuple[dict, dict]:
     """
     Run exact enumeration for all groups.
@@ -377,7 +394,8 @@ def simulate_all_groups(
     all_position_probs = {}
     all_third_dists = {}
     for group_name, teams in tqdm(groups.items(), desc="Groups", unit="group"):
-        pos_probs, third_dist = enumerate_group(group_name, teams, model, calibrator)
+        pos_probs, third_dist = enumerate_group(group_name, teams, model,
+                                                calibrator, fixed_results)
         all_position_probs[group_name] = pos_probs
         all_third_dists[group_name] = third_dist
     return all_position_probs, all_third_dists

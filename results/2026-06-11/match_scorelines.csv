@@ -1,0 +1,361 @@
+stage,group,home_team,away_team,p_home,p_draw,p_away,rank,score,prob
+group,A,Mexico,South Korea,0.5721,0.2629,0.165,1,1-1,0.1258
+group,A,Mexico,South Korea,0.5721,0.2629,0.165,2,2-0,0.1102
+group,A,Mexico,South Korea,0.5721,0.2629,0.165,3,1-0,0.1054
+group,A,Mexico,South Korea,0.5721,0.2629,0.165,4,2-1,0.0978
+group,A,Mexico,South Korea,0.5721,0.2629,0.165,5,0-0,0.0851
+group,A,Mexico,South Africa,0.6049,0.2568,0.1383,1,2-0,0.1251
+group,A,Mexico,South Africa,0.6049,0.2568,0.1383,2,1-0,0.124
+group,A,Mexico,South Africa,0.6049,0.2568,0.1383,3,1-1,0.1215
+group,A,Mexico,South Africa,0.6049,0.2568,0.1383,4,2-1,0.0951
+group,A,Mexico,South Africa,0.6049,0.2568,0.1383,5,0-0,0.0931
+group,A,Mexico,Czech Republic,0.3988,0.2914,0.3098,1,1-1,0.139
+group,A,Mexico,Czech Republic,0.3988,0.2914,0.3098,2,2-1,0.0884
+group,A,Mexico,Czech Republic,0.3988,0.2914,0.3098,3,0-0,0.0833
+group,A,Mexico,Czech Republic,0.3988,0.2914,0.3098,4,1-0,0.0771
+group,A,Mexico,Czech Republic,0.3988,0.2914,0.3098,5,1-2,0.0767
+group,A,South Korea,South Africa,0.3803,0.3249,0.2948,1,1-1,0.1527
+group,A,South Korea,South Africa,0.3803,0.3249,0.2948,2,0-0,0.1228
+group,A,South Korea,South Africa,0.3803,0.3249,0.2948,3,1-0,0.1049
+group,A,South Korea,South Africa,0.3803,0.3249,0.2948,4,0-1,0.0872
+group,A,South Korea,South Africa,0.3803,0.3249,0.2948,5,2-1,0.081
+group,A,South Korea,Czech Republic,0.1979,0.266,0.5361,1,1-1,0.1272
+group,A,South Korea,Czech Republic,0.1979,0.266,0.5361,2,0-2,0.098
+group,A,South Korea,Czech Republic,0.1979,0.266,0.5361,3,1-2,0.098
+group,A,South Korea,Czech Republic,0.1979,0.266,0.5361,4,0-1,0.0958
+group,A,South Korea,Czech Republic,0.1979,0.266,0.5361,5,0-0,0.0791
+group,A,South Africa,Czech Republic,0.1663,0.262,0.5717,1,1-1,0.1249
+group,A,South Africa,Czech Republic,0.1663,0.262,0.5717,2,0-1,0.1146
+group,A,South Africa,Czech Republic,0.1663,0.262,0.5717,3,0-2,0.1131
+group,A,South Africa,Czech Republic,0.1663,0.262,0.5717,4,1-2,0.0968
+group,A,South Africa,Czech Republic,0.1663,0.262,0.5717,5,0-0,0.088
+group,B,Canada,Switzerland,0.3365,0.2948,0.3687,1,1-1,0.1408
+group,B,Canada,Switzerland,0.3365,0.2948,0.3687,2,0-0,0.0861
+group,B,Canada,Switzerland,0.3365,0.2948,0.3687,3,1-2,0.0846
+group,B,Canada,Switzerland,0.3365,0.2948,0.3687,4,2-1,0.0804
+group,B,Canada,Switzerland,0.3365,0.2948,0.3687,5,0-1,0.0758
+group,B,Canada,Qatar,0.8158,0.1235,0.0607,1,3-0,0.0909
+group,B,Canada,Qatar,0.8158,0.1235,0.0607,2,2-0,0.0841
+group,B,Canada,Qatar,0.8158,0.1235,0.0607,3,3-1,0.0812
+group,B,Canada,Qatar,0.8158,0.1235,0.0607,4,2-1,0.0752
+group,B,Canada,Qatar,0.8158,0.1235,0.0607,5,4-0,0.0736
+group,B,Canada,Bosnia and Herzegovina,0.6467,0.2443,0.109,1,1-0,0.1462
+group,B,Canada,Bosnia and Herzegovina,0.6467,0.2443,0.109,2,2-0,0.1438
+group,B,Canada,Bosnia and Herzegovina,0.6467,0.2443,0.109,3,1-1,0.1119
+group,B,Canada,Bosnia and Herzegovina,0.6467,0.2443,0.109,4,0-0,0.1008
+group,B,Canada,Bosnia and Herzegovina,0.6467,0.2443,0.109,5,2-1,0.0895
+group,B,Switzerland,Qatar,0.8298,0.1145,0.0557,1,3-0,0.0924
+group,B,Switzerland,Qatar,0.8298,0.1145,0.0557,2,2-0,0.0835
+group,B,Switzerland,Qatar,0.8298,0.1145,0.0557,3,3-1,0.0804
+group,B,Switzerland,Qatar,0.8298,0.1145,0.0557,4,4-0,0.0767
+group,B,Switzerland,Qatar,0.8298,0.1145,0.0557,5,2-1,0.0726
+group,B,Switzerland,Bosnia and Herzegovina,0.663,0.2337,0.1033,1,1-0,0.1476
+group,B,Switzerland,Bosnia and Herzegovina,0.663,0.2337,0.1033,2,2-0,0.1468
+group,B,Switzerland,Bosnia and Herzegovina,0.663,0.2337,0.1033,3,1-1,0.1068
+group,B,Switzerland,Bosnia and Herzegovina,0.663,0.2337,0.1033,4,0-0,0.0963
+group,B,Switzerland,Bosnia and Herzegovina,0.663,0.2337,0.1033,5,3-0,0.0907
+group,B,Qatar,Bosnia and Herzegovina,0.2873,0.2887,0.4239,1,1-1,0.1379
+group,B,Qatar,Bosnia and Herzegovina,0.2873,0.2887,0.4239,2,1-2,0.0907
+group,B,Qatar,Bosnia and Herzegovina,0.2873,0.2887,0.4239,3,0-0,0.0841
+group,B,Qatar,Bosnia and Herzegovina,0.2873,0.2887,0.4239,4,0-1,0.0836
+group,B,Qatar,Bosnia and Herzegovina,0.2873,0.2887,0.4239,5,0-2,0.0754
+group,C,Brazil,Morocco,0.4768,0.3124,0.2107,1,1-1,0.1421
+group,C,Brazil,Morocco,0.4768,0.3124,0.2107,2,1-0,0.1398
+group,C,Brazil,Morocco,0.4768,0.3124,0.2107,3,0-0,0.1314
+group,C,Brazil,Morocco,0.4768,0.3124,0.2107,4,2-0,0.1045
+group,C,Brazil,Morocco,0.4768,0.3124,0.2107,5,2-1,0.0849
+group,C,Brazil,Scotland,0.6347,0.2363,0.129,1,2-0,0.1265
+group,C,Brazil,Scotland,0.6347,0.2363,0.129,2,1-0,0.1202
+group,C,Brazil,Scotland,0.6347,0.2363,0.129,3,1-1,0.1123
+group,C,Brazil,Scotland,0.6347,0.2363,0.129,4,2-1,0.096
+group,C,Brazil,Scotland,0.6347,0.2363,0.129,5,0-0,0.0811
+group,C,Brazil,Haiti,0.9156,0.0631,0.0212,1,3-0,0.1066
+group,C,Brazil,Haiti,0.9156,0.0631,0.0212,2,4-0,0.1047
+group,C,Brazil,Haiti,0.9156,0.0631,0.0212,3,5-0,0.0823
+group,C,Brazil,Haiti,0.9156,0.0631,0.0212,4,2-0,0.0814
+group,C,Brazil,Haiti,0.9156,0.0631,0.0212,5,3-1,0.0667
+group,C,Morocco,Scotland,0.4131,0.3713,0.2156,1,0-0,0.1999
+group,C,Morocco,Scotland,0.4131,0.3713,0.2156,2,1-0,0.1655
+group,C,Morocco,Scotland,0.4131,0.3713,0.2156,3,1-1,0.1473
+group,C,Morocco,Scotland,0.4131,0.3713,0.2156,4,0-1,0.1015
+group,C,Morocco,Scotland,0.4131,0.3713,0.2156,5,2-0,0.0966
+group,C,Morocco,Haiti,0.7272,0.2003,0.0724,1,2-0,0.1538
+group,C,Morocco,Haiti,0.7272,0.2003,0.0724,2,1-0,0.1324
+group,C,Morocco,Haiti,0.7272,0.2003,0.0724,3,3-0,0.1093
+group,C,Morocco,Haiti,0.7272,0.2003,0.0724,4,1-1,0.093
+group,C,Morocco,Haiti,0.7272,0.2003,0.0724,5,2-1,0.0863
+group,C,Scotland,Haiti,0.6377,0.2356,0.1267,1,2-0,0.1218
+group,C,Scotland,Haiti,0.6377,0.2356,0.1267,2,1-1,0.1127
+group,C,Scotland,Haiti,0.6377,0.2356,0.1267,3,1-0,0.1075
+group,C,Scotland,Haiti,0.6377,0.2356,0.1267,4,2-1,0.0973
+group,C,Scotland,Haiti,0.6377,0.2356,0.1267,5,3-0,0.0808
+group,D,United States,Paraguay,0.2852,0.3454,0.3694,1,1-1,0.1563
+group,D,United States,Paraguay,0.2852,0.3454,0.3694,2,0-0,0.1491
+group,D,United States,Paraguay,0.2852,0.3454,0.3694,3,0-1,0.1195
+group,D,United States,Paraguay,0.2852,0.3454,0.3694,4,1-0,0.0988
+group,D,United States,Paraguay,0.2852,0.3454,0.3694,5,0-2,0.0787
+group,D,United States,Australia,0.3672,0.3189,0.314,1,1-1,0.1518
+group,D,United States,Australia,0.3672,0.3189,0.314,2,0-0,0.1118
+group,D,United States,Australia,0.3672,0.3189,0.314,3,1-0,0.0918
+group,D,United States,Australia,0.3672,0.3189,0.314,4,2-1,0.0819
+group,D,United States,Australia,0.3672,0.3189,0.314,5,0-1,0.0819
+group,D,United States,Turkey,0.3164,0.2775,0.4061,1,1-1,0.1302
+group,D,United States,Turkey,0.3164,0.2775,0.4061,2,1-2,0.0893
+group,D,United States,Turkey,0.3164,0.2775,0.4061,3,2-1,0.0778
+group,D,United States,Turkey,0.3164,0.2775,0.4061,4,0-0,0.0694
+group,D,United States,Turkey,0.3164,0.2775,0.4061,5,0-1,0.0665
+group,D,Paraguay,Australia,0.365,0.3859,0.2491,1,0-0,0.2123
+group,D,Paraguay,Australia,0.365,0.3859,0.2491,2,1-0,0.1565
+group,D,Paraguay,Australia,0.365,0.3859,0.2491,3,1-1,0.1501
+group,D,Paraguay,Australia,0.365,0.3859,0.2491,4,0-1,0.1172
+group,D,Paraguay,Australia,0.365,0.3859,0.2491,5,2-0,0.0827
+group,D,Paraguay,Turkey,0.3321,0.3464,0.3214,1,1-1,0.1545
+group,D,Paraguay,Turkey,0.3321,0.3464,0.3214,2,0-0,0.1539
+group,D,Paraguay,Turkey,0.3321,0.3464,0.3214,3,1-0,0.1172
+group,D,Paraguay,Turkey,0.3321,0.3464,0.3214,4,0-1,0.1145
+group,D,Paraguay,Turkey,0.3321,0.3464,0.3214,5,2-0,0.0691
+group,D,Australia,Turkey,0.2776,0.3136,0.4088,1,1-1,0.1485
+group,D,Australia,Turkey,0.2776,0.3136,0.4088,2,0-0,0.1132
+group,D,Australia,Turkey,0.2776,0.3136,0.4088,3,0-1,0.1055
+group,D,Australia,Turkey,0.2776,0.3136,0.4088,4,1-2,0.0853
+group,D,Australia,Turkey,0.2776,0.3136,0.4088,5,0-2,0.0816
+group,E,Germany,Ecuador,0.3479,0.3677,0.2844,1,0-0,0.193
+group,E,Germany,Ecuador,0.3479,0.3677,0.2844,2,1-1,0.148
+group,E,Germany,Ecuador,0.3479,0.3677,0.2844,3,1-0,0.1476
+group,E,Germany,Ecuador,0.3479,0.3677,0.2844,4,0-1,0.1273
+group,E,Germany,Ecuador,0.3479,0.3677,0.2844,5,2-0,0.0754
+group,E,Germany,Ivory Coast,0.6777,0.2279,0.0944,1,1-0,0.1578
+group,E,Germany,Ivory Coast,0.6777,0.2279,0.0944,2,2-0,0.1545
+group,E,Germany,Ivory Coast,0.6777,0.2279,0.0944,3,1-1,0.1018
+group,E,Germany,Ivory Coast,0.6777,0.2279,0.0944,4,0-0,0.0994
+group,E,Germany,Ivory Coast,0.6777,0.2279,0.0944,5,3-0,0.0953
+group,E,Germany,Curaçao,0.9716,0.0238,0.0045,1,4-0,0.132
+group,E,Germany,Curaçao,0.9716,0.0238,0.0045,2,5-0,0.1241
+group,E,Germany,Curaçao,0.9716,0.0238,0.0045,3,3-0,0.1123
+group,E,Germany,Curaçao,0.9716,0.0238,0.0045,4,6-0,0.0972
+group,E,Germany,Curaçao,0.9716,0.0238,0.0045,5,2-0,0.0717
+group,E,Ecuador,Ivory Coast,0.49,0.3983,0.1117,1,0-0,0.2937
+group,E,Ecuador,Ivory Coast,0.49,0.3983,0.1117,2,1-0,0.2539
+group,E,Ecuador,Ivory Coast,0.49,0.3983,0.1117,3,2-0,0.1255
+group,E,Ecuador,Ivory Coast,0.49,0.3983,0.1117,4,1-1,0.0979
+group,E,Ecuador,Ivory Coast,0.49,0.3983,0.1117,5,0-1,0.079
+group,E,Ecuador,Curaçao,0.8604,0.1227,0.0168,1,2-0,0.2137
+group,E,Ecuador,Curaçao,0.8604,0.1227,0.0168,2,1-0,0.1743
+group,E,Ecuador,Curaçao,0.8604,0.1227,0.0168,3,3-0,0.1708
+group,E,Ecuador,Curaçao,0.8604,0.1227,0.0168,4,4-0,0.1024
+group,E,Ecuador,Curaçao,0.8604,0.1227,0.0168,5,0-0,0.0783
+group,E,Ivory Coast,Curaçao,0.6725,0.2526,0.0749,1,1-0,0.2005
+group,E,Ivory Coast,Curaçao,0.6725,0.2526,0.0749,2,2-0,0.1743
+group,E,Ivory Coast,Curaçao,0.6725,0.2526,0.0749,3,0-0,0.1402
+group,E,Ivory Coast,Curaçao,0.6725,0.2526,0.0749,4,1-1,0.097
+group,E,Ivory Coast,Curaçao,0.6725,0.2526,0.0749,5,3-0,0.0956
+group,F,Netherlands,Japan,0.43,0.2924,0.2776,1,1-1,0.1399
+group,F,Netherlands,Japan,0.43,0.2924,0.2776,2,2-1,0.0908
+group,F,Netherlands,Japan,0.43,0.2924,0.2776,3,1-0,0.0893
+group,F,Netherlands,Japan,0.43,0.2924,0.2776,4,0-0,0.0892
+group,F,Netherlands,Japan,0.43,0.2924,0.2776,5,2-0,0.0788
+group,F,Netherlands,Tunisia,0.595,0.2949,0.1101,1,1-0,0.2153
+group,F,Netherlands,Tunisia,0.595,0.2949,0.1101,2,0-0,0.1716
+group,F,Netherlands,Tunisia,0.595,0.2949,0.1101,3,2-0,0.1535
+group,F,Netherlands,Tunisia,0.595,0.2949,0.1101,4,1-1,0.1073
+group,F,Netherlands,Tunisia,0.595,0.2949,0.1101,5,3-0,0.0702
+group,F,Netherlands,Sweden,0.6551,0.1946,0.1504,1,2-1,0.0921
+group,F,Netherlands,Sweden,0.6551,0.1946,0.1504,2,1-1,0.0829
+group,F,Netherlands,Sweden,0.6551,0.1946,0.1504,3,3-1,0.0779
+group,F,Netherlands,Sweden,0.6551,0.1946,0.1504,4,2-0,0.0771
+group,F,Netherlands,Sweden,0.6551,0.1946,0.1504,5,3-0,0.0653
+group,F,Japan,Tunisia,0.4736,0.3875,0.1389,1,0-0,0.2702
+group,F,Japan,Tunisia,0.4736,0.3875,0.1389,2,1-0,0.2376
+group,F,Japan,Tunisia,0.4736,0.3875,0.1389,3,2-0,0.118
+group,F,Japan,Tunisia,0.4736,0.3875,0.1389,4,1-1,0.1078
+group,F,Japan,Tunisia,0.4736,0.3875,0.1389,5,0-1,0.0924
+group,F,Japan,Sweden,0.5191,0.271,0.2099,1,1-1,0.1293
+group,F,Japan,Sweden,0.5191,0.271,0.2099,2,2-1,0.0979
+group,F,Japan,Sweden,0.5191,0.271,0.2099,3,2-0,0.0919
+group,F,Japan,Sweden,0.5191,0.271,0.2099,4,1-0,0.0859
+group,F,Japan,Sweden,0.5191,0.271,0.2099,5,0-0,0.0773
+group,F,Tunisia,Sweden,0.2305,0.3644,0.4051,1,0-0,0.2022
+group,F,Tunisia,Sweden,0.2305,0.3644,0.4051,2,0-1,0.1741
+group,F,Tunisia,Sweden,0.2305,0.3644,0.4051,3,1-1,0.1394
+group,F,Tunisia,Sweden,0.2305,0.3644,0.4051,4,1-0,0.1152
+group,F,Tunisia,Sweden,0.2305,0.3644,0.4051,5,0-2,0.0924
+group,G,Belgium,Iran,0.4925,0.2981,0.2093,1,1-1,0.1417
+group,G,Belgium,Iran,0.4925,0.2981,0.2093,2,1-0,0.1108
+group,G,Belgium,Iran,0.4925,0.2981,0.2093,3,0-0,0.1058
+group,G,Belgium,Iran,0.4925,0.2981,0.2093,4,2-0,0.1
+group,G,Belgium,Iran,0.4925,0.2981,0.2093,5,2-1,0.0929
+group,G,Belgium,Egypt,0.4058,0.3667,0.2275,1,0-0,0.1946
+group,G,Belgium,Egypt,0.4058,0.3667,0.2275,2,1-0,0.1628
+group,G,Belgium,Egypt,0.4058,0.3667,0.2275,3,1-1,0.1467
+group,G,Belgium,Egypt,0.4058,0.3667,0.2275,4,0-1,0.1059
+group,G,Belgium,Egypt,0.4058,0.3667,0.2275,5,2-0,0.0934
+group,G,Belgium,New Zealand,0.5891,0.2975,0.1134,1,1-0,0.2018
+group,G,Belgium,New Zealand,0.5891,0.2975,0.1134,2,0-0,0.1647
+group,G,Belgium,New Zealand,0.5891,0.2975,0.1134,3,2-0,0.15
+group,G,Belgium,New Zealand,0.5891,0.2975,0.1134,4,1-1,0.1144
+group,G,Belgium,New Zealand,0.5891,0.2975,0.1134,5,2-1,0.0717
+group,G,Iran,Egypt,0.2994,0.3355,0.365,1,1-1,0.154
+group,G,Iran,Egypt,0.2994,0.3355,0.365,2,0-0,0.1384
+group,G,Iran,Egypt,0.2994,0.3355,0.365,3,0-1,0.1144
+group,G,Iran,Egypt,0.2994,0.3355,0.365,4,1-0,0.0991
+group,G,Iran,Egypt,0.2994,0.3355,0.365,5,1-2,0.0759
+group,G,Iran,New Zealand,0.4957,0.3095,0.1948,1,1-0,0.1475
+group,G,Iran,New Zealand,0.4957,0.3095,0.1948,2,1-1,0.1391
+group,G,Iran,New Zealand,0.4957,0.3095,0.1948,3,0-0,0.1341
+group,G,Iran,New Zealand,0.4957,0.3095,0.1948,4,2-0,0.1107
+group,G,Iran,New Zealand,0.4957,0.3095,0.1948,5,2-1,0.0846
+group,G,Egypt,New Zealand,0.4627,0.3724,0.1649,1,0-0,0.2276
+group,G,Egypt,New Zealand,0.4627,0.3724,0.1649,2,1-0,0.204
+group,G,Egypt,New Zealand,0.4627,0.3724,0.1649,3,1-1,0.1288
+group,G,Egypt,New Zealand,0.4627,0.3724,0.1649,4,2-0,0.1139
+group,G,Egypt,New Zealand,0.4627,0.3724,0.1649,5,0-1,0.0934
+group,H,Spain,Uruguay,0.4734,0.3321,0.1945,1,1-0,0.1691
+group,H,Spain,Uruguay,0.4734,0.3321,0.1945,2,0-0,0.1658
+group,H,Spain,Uruguay,0.4734,0.3321,0.1945,3,1-1,0.1383
+group,H,Spain,Uruguay,0.4734,0.3321,0.1945,4,2-0,0.1104
+group,H,Spain,Uruguay,0.4734,0.3321,0.1945,5,0-1,0.089
+group,H,Spain,Saudi Arabia,0.9109,0.0723,0.0168,1,3-0,0.152
+group,H,Spain,Saudi Arabia,0.9109,0.0723,0.0168,2,2-0,0.1377
+group,H,Spain,Saudi Arabia,0.9109,0.0723,0.0168,3,4-0,0.1259
+group,H,Spain,Saudi Arabia,0.9109,0.0723,0.0168,4,5-0,0.0834
+group,H,Spain,Saudi Arabia,0.9109,0.0723,0.0168,5,1-0,0.0806
+group,H,Spain,Cape Verde,0.9088,0.0743,0.0168,1,3-0,0.1553
+group,H,Spain,Cape Verde,0.9088,0.0743,0.0168,2,2-0,0.1434
+group,H,Spain,Cape Verde,0.9088,0.0743,0.0168,3,4-0,0.1261
+group,H,Spain,Cape Verde,0.9088,0.0743,0.0168,4,1-0,0.0858
+group,H,Spain,Cape Verde,0.9088,0.0743,0.0168,5,5-0,0.0819
+group,H,Uruguay,Saudi Arabia,0.6695,0.2684,0.062,1,1-0,0.2396
+group,H,Uruguay,Saudi Arabia,0.6695,0.2684,0.062,2,2-0,0.1857
+group,H,Uruguay,Saudi Arabia,0.6695,0.2684,0.062,3,0-0,0.1761
+group,H,Uruguay,Saudi Arabia,0.6695,0.2684,0.062,4,3-0,0.0924
+group,H,Uruguay,Saudi Arabia,0.6695,0.2684,0.062,5,1-1,0.0836
+group,H,Uruguay,Cape Verde,0.6665,0.2725,0.061,1,1-0,0.2455
+group,H,Uruguay,Cape Verde,0.6665,0.2725,0.061,2,2-0,0.1861
+group,H,Uruguay,Cape Verde,0.6665,0.2725,0.061,3,0-0,0.1828
+group,H,Uruguay,Cape Verde,0.6665,0.2725,0.061,4,3-0,0.0908
+group,H,Uruguay,Cape Verde,0.6665,0.2725,0.061,5,1-1,0.0817
+group,H,Saudi Arabia,Cape Verde,0.3068,0.397,0.2962,1,0-0,0.2251
+group,H,Saudi Arabia,Cape Verde,0.3068,0.397,0.2962,2,1-1,0.15
+group,H,Saudi Arabia,Cape Verde,0.3068,0.397,0.2962,3,1-0,0.1428
+group,H,Saudi Arabia,Cape Verde,0.3068,0.397,0.2962,4,0-1,0.139
+group,H,Saudi Arabia,Cape Verde,0.3068,0.397,0.2962,5,2-0,0.066
+group,I,France,Senegal,0.3831,0.4277,0.1892,1,0-0,0.3
+group,I,France,Senegal,0.3831,0.4277,0.1892,2,1-0,0.2109
+group,I,France,Senegal,0.3831,0.4277,0.1892,3,0-1,0.1215
+group,I,France,Senegal,0.3831,0.4277,0.1892,4,1-1,0.1177
+group,I,France,Senegal,0.3831,0.4277,0.1892,5,2-0,0.0873
+group,I,France,Norway,0.4663,0.285,0.2487,1,1-1,0.1363
+group,I,France,Norway,0.4663,0.285,0.2487,2,2-1,0.0943
+group,I,France,Norway,0.4663,0.285,0.2487,3,1-0,0.0888
+group,I,France,Norway,0.4663,0.285,0.2487,4,2-0,0.0847
+group,I,France,Norway,0.4663,0.285,0.2487,5,0-0,0.0847
+group,I,France,Iraq,0.8448,0.125,0.0302,1,2-0,0.1719
+group,I,France,Iraq,0.8448,0.125,0.0302,2,3-0,0.1493
+group,I,France,Iraq,0.8448,0.125,0.0302,3,1-0,0.1264
+group,I,France,Iraq,0.8448,0.125,0.0302,4,4-0,0.0973
+group,I,France,Iraq,0.8448,0.125,0.0302,5,2-1,0.0649
+group,I,Senegal,Norway,0.2858,0.3523,0.3619,1,0-0,0.1732
+group,I,Senegal,Norway,0.2858,0.3523,0.3619,2,1-1,0.1482
+group,I,Senegal,Norway,0.2858,0.3523,0.3619,3,0-1,0.1426
+group,I,Senegal,Norway,0.2858,0.3523,0.3619,4,1-0,0.1203
+group,I,Senegal,Norway,0.2858,0.3523,0.3619,5,0-2,0.0779
+group,I,Senegal,Iraq,0.6292,0.2957,0.0751,1,1-0,0.2346
+group,I,Senegal,Iraq,0.6292,0.2957,0.0751,2,0-0,0.1898
+group,I,Senegal,Iraq,0.6292,0.2957,0.0751,3,2-0,0.1722
+group,I,Senegal,Iraq,0.6292,0.2957,0.0751,4,1-1,0.0956
+group,I,Senegal,Iraq,0.6292,0.2957,0.0751,5,3-0,0.08
+group,I,Norway,Iraq,0.8613,0.0987,0.04,1,3-0,0.1113
+group,I,Norway,Iraq,0.8613,0.0987,0.04,2,2-0,0.1007
+group,I,Norway,Iraq,0.8613,0.0987,0.04,3,4-0,0.0922
+group,I,Norway,Iraq,0.8613,0.0987,0.04,4,3-1,0.0762
+group,I,Norway,Iraq,0.8613,0.0987,0.04,5,2-1,0.069
+group,J,Argentina,Austria,0.6155,0.2659,0.1186,1,1-0,0.1527
+group,J,Argentina,Austria,0.6155,0.2659,0.1186,2,2-0,0.1412
+group,J,Argentina,Austria,0.6155,0.2659,0.1186,3,1-1,0.1199
+group,J,Argentina,Austria,0.6155,0.2659,0.1186,4,0-0,0.1153
+group,J,Argentina,Austria,0.6155,0.2659,0.1186,5,2-1,0.0879
+group,J,Argentina,Algeria,0.79,0.1586,0.0513,1,2-0,0.1541
+group,J,Argentina,Algeria,0.79,0.1586,0.0513,2,3-0,0.1257
+group,J,Argentina,Algeria,0.79,0.1586,0.0513,3,1-0,0.1172
+group,J,Argentina,Algeria,0.79,0.1586,0.0513,4,2-1,0.0801
+group,J,Argentina,Algeria,0.79,0.1586,0.0513,5,4-0,0.0768
+group,J,Argentina,Jordan,0.8967,0.0869,0.0164,1,2-0,0.1672
+group,J,Argentina,Jordan,0.8967,0.0869,0.0164,2,3-0,0.1658
+group,J,Argentina,Jordan,0.8967,0.0869,0.0164,3,4-0,0.1233
+group,J,Argentina,Jordan,0.8967,0.0869,0.0164,4,1-0,0.1089
+group,J,Argentina,Jordan,0.8967,0.0869,0.0164,5,5-0,0.0734
+group,J,Austria,Algeria,0.5426,0.2584,0.199,1,1-1,0.1226
+group,J,Austria,Algeria,0.5426,0.2584,0.199,2,2-1,0.0988
+group,J,Austria,Algeria,0.5426,0.2584,0.199,3,2-0,0.0925
+group,J,Austria,Algeria,0.5426,0.2584,0.199,4,1-0,0.0831
+group,J,Austria,Algeria,0.5426,0.2584,0.199,5,0-0,0.0697
+group,J,Austria,Jordan,0.7386,0.1849,0.0765,1,2-0,0.1434
+group,J,Austria,Jordan,0.7386,0.1849,0.0765,2,1-0,0.1175
+group,J,Austria,Jordan,0.7386,0.1849,0.0765,3,3-0,0.1082
+group,J,Austria,Jordan,0.7386,0.1849,0.0765,4,2-1,0.0888
+group,J,Austria,Jordan,0.7386,0.1849,0.0765,5,1-1,0.0876
+group,J,Algeria,Jordan,0.5929,0.2463,0.1608,1,1-1,0.1178
+group,J,Algeria,Jordan,0.5929,0.2463,0.1608,2,2-0,0.1096
+group,J,Algeria,Jordan,0.5929,0.2463,0.1608,3,1-0,0.1025
+group,J,Algeria,Jordan,0.5929,0.2463,0.1608,4,2-1,0.0988
+group,J,Algeria,Jordan,0.5929,0.2463,0.1608,5,0-0,0.0746
+group,K,Portugal,Colombia,0.3372,0.2887,0.3741,1,1-1,0.1366
+group,K,Portugal,Colombia,0.3372,0.2887,0.3741,2,1-2,0.0861
+group,K,Portugal,Colombia,0.3372,0.2887,0.3741,3,2-1,0.0813
+group,K,Portugal,Colombia,0.3372,0.2887,0.3741,4,0-0,0.0769
+group,K,Portugal,Colombia,0.3372,0.2887,0.3741,5,0-1,0.0647
+group,K,Portugal,Uzbekistan,0.6641,0.2356,0.1003,1,1-0,0.1575
+group,K,Portugal,Uzbekistan,0.6641,0.2356,0.1003,2,2-0,0.1516
+group,K,Portugal,Uzbekistan,0.6641,0.2356,0.1003,3,1-1,0.1054
+group,K,Portugal,Uzbekistan,0.6641,0.2356,0.1003,4,0-0,0.1025
+group,K,Portugal,Uzbekistan,0.6641,0.2356,0.1003,5,3-0,0.0915
+group,K,Portugal,DR Congo,0.5184,0.331,0.1506,1,1-0,0.2023
+group,K,Portugal,DR Congo,0.5184,0.331,0.1506,2,0-0,0.1885
+group,K,Portugal,DR Congo,0.5184,0.331,0.1506,3,2-0,0.1286
+group,K,Portugal,DR Congo,0.5184,0.331,0.1506,4,1-1,0.1234
+group,K,Portugal,DR Congo,0.5184,0.331,0.1506,5,0-1,0.082
+group,K,Colombia,Uzbekistan,0.672,0.2341,0.0938,1,1-0,0.164
+group,K,Colombia,Uzbekistan,0.672,0.2341,0.0938,2,2-0,0.1567
+group,K,Colombia,Uzbekistan,0.672,0.2341,0.0938,3,0-0,0.1061
+group,K,Colombia,Uzbekistan,0.672,0.2341,0.0938,4,1-1,0.1029
+group,K,Colombia,Uzbekistan,0.672,0.2341,0.0938,5,3-0,0.0942
+group,K,Colombia,DR Congo,0.5264,0.3318,0.1418,1,1-0,0.2095
+group,K,Colombia,DR Congo,0.5264,0.3318,0.1418,2,0-0,0.1946
+group,K,Colombia,DR Congo,0.5264,0.3318,0.1418,3,2-0,0.1322
+group,K,Colombia,DR Congo,0.5264,0.3318,0.1418,4,1-1,0.1199
+group,K,Colombia,DR Congo,0.5264,0.3318,0.1418,5,0-1,0.0799
+group,K,Uzbekistan,DR Congo,0.2077,0.468,0.3243,1,0-0,0.3456
+group,K,Uzbekistan,DR Congo,0.2077,0.468,0.3243,2,0-1,0.1965
+group,K,Uzbekistan,DR Congo,0.2077,0.468,0.3243,3,1-0,0.1374
+group,K,Uzbekistan,DR Congo,0.2077,0.468,0.3243,4,1-1,0.1148
+group,K,Uzbekistan,DR Congo,0.2077,0.468,0.3243,5,0-2,0.0685
+group,L,England,Croatia,0.4674,0.3343,0.1983,1,0-0,0.1569
+group,L,England,Croatia,0.4674,0.3343,0.1983,2,1-0,0.1528
+group,L,England,Croatia,0.4674,0.3343,0.1983,3,1-1,0.1454
+group,L,England,Croatia,0.4674,0.3343,0.1983,4,2-0,0.1077
+group,L,England,Croatia,0.4674,0.3343,0.1983,5,0-1,0.0814
+group,L,England,Panama,0.8171,0.1433,0.0396,1,2-0,0.1673
+group,L,England,Panama,0.8171,0.1433,0.0396,2,3-0,0.1385
+group,L,England,Panama,0.8171,0.1433,0.0396,3,1-0,0.1278
+group,L,England,Panama,0.8171,0.1433,0.0396,4,4-0,0.086
+group,L,England,Panama,0.8171,0.1433,0.0396,5,2-1,0.072
+group,L,England,Ghana,0.8228,0.1356,0.0416,1,2-0,0.1495
+group,L,England,Ghana,0.8228,0.1356,0.0416,2,3-0,0.1325
+group,L,England,Ghana,0.8228,0.1356,0.0416,3,1-0,0.1053
+group,L,England,Ghana,0.8228,0.1356,0.0416,4,4-0,0.0881
+group,L,England,Ghana,0.8228,0.1356,0.0416,5,2-1,0.0754
+group,L,Croatia,Panama,0.703,0.2099,0.087,1,2-0,0.1468
+group,L,Croatia,Panama,0.703,0.2099,0.087,2,1-0,0.1311
+group,L,Croatia,Panama,0.703,0.2099,0.087,3,3-0,0.1009
+group,L,Croatia,Panama,0.703,0.2099,0.087,4,1-1,0.0982
+group,L,Croatia,Panama,0.703,0.2099,0.087,5,2-1,0.0897
+group,L,Croatia,Ghana,0.7031,0.2025,0.0944,1,2-0,0.1311
+group,L,Croatia,Ghana,0.7031,0.2025,0.0944,2,1-0,0.1069
+group,L,Croatia,Ghana,0.7031,0.2025,0.0944,3,1-1,0.0968
+group,L,Croatia,Ghana,0.7031,0.2025,0.0944,4,3-0,0.0964
+group,L,Croatia,Ghana,0.7031,0.2025,0.0944,5,2-1,0.0937
+group,L,Panama,Ghana,0.3247,0.2945,0.3808,1,1-1,0.1406
+group,L,Panama,Ghana,0.3247,0.2945,0.3808,2,1-2,0.0864
+group,L,Panama,Ghana,0.3247,0.2945,0.3808,3,0-0,0.0849
+group,L,Panama,Ghana,0.3247,0.2945,0.3808,4,2-1,0.079
+group,L,Panama,Ghana,0.3247,0.2945,0.3808,5,0-1,0.0748

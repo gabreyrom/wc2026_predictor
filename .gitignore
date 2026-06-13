@@ -15,8 +15,6 @@ env/
 
 # ── Data (raw downloads — too large for git) ──────────────────────────────────
 data/raw/
-# Everything in the results folder
-results/*
 
 # ── Model artefacts ───────────────────────────────────────────────────────────
 models/*.pkl
