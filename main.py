@@ -38,6 +38,7 @@ from src.output.results import (
     modal_bracket,
     save_results,
     save_match_scorelines,
+    save_match_scoring_probs,
     save_match_probabilities,
 )
 from src.output.match_report import print_match_report
@@ -56,6 +57,8 @@ def main(
     match: tuple[str, str] | None = None,
     n_bootstrap: int = 500,
     ignore_results: bool = False,
+    plots: bool = False,
+    load_calibrator: bool = False,
 ):
     print("=" * 60)
     print("   FIFA WORLD CUP 2026 PREDICTOR")
@@ -98,8 +101,16 @@ def main(
     # (fit <2022, scored on 2022+) gives the honest final numbers; test rows
     # never enter calibrator training.
     calibrator: LGBMCalibrator | None = None
+    test_pred_df = None   # held-out test predictions (for the calibration plot)
 
-    if not skip_calibration:
+    cal_path = "models/lgbm_calibrator.joblib"
+    if load_calibrator and Path(cal_path).exists():
+        # Daily-run fast path: reuse the saved calibrator instead of re-running
+        # the ~5-min out-of-fold evaluation (which doesn't change day to day).
+        print(f"\n[3.5/6] Loading saved calibrator from {cal_path} "
+              f"(skipping evaluation — use a full run to refresh the scorecard)")
+        calibrator = LGBMCalibrator.load(cal_path)
+    elif not skip_calibration:
         if skip_lgbm:
             # DC-only honest evaluation (no calibrator)
             print("\n[3.5/6] Temporal cross-validation (eval model, no LGBM)...")
@@ -111,7 +122,8 @@ def main(
         else:
             print("\n[3.5+3.7/6] Out-of-fold temporal calibration "
                   "(4 model vintages, ~5 min)...")
-            _, calibrator = oof_calibration_report(fit_data, xi=xi)
+            cal_results, calibrator = oof_calibration_report(fit_data, xi=xi)
+            test_pred_df = cal_results.get("test_pred_df")
 
             if save_calibrator:
                 calibrator.save("models/lgbm_calibrator.joblib")
@@ -164,6 +176,7 @@ def main(
     modal_bracket(GROUPS, group_pos_probs, mc_results)
     save_results(mc_results, group_pos_probs=group_pos_probs)
     save_match_scorelines(model, GROUPS, top_n=5)
+    save_match_scoring_probs(model, GROUPS)
     save_match_probabilities(
         model, GROUPS,
         pairings=ko_pairings,
@@ -183,6 +196,23 @@ def main(
             match_importance=1.0,
             top_scores=3,
             seed=seed,
+        )
+        # Always save the scoreline heatmap for an explicit --match
+        from datetime import date
+        from src.output.visualize import plot_match_heatmap
+        figdir = f"results/{date.today().isoformat()}/figures"
+        p = plot_match_heatmap(model, team_i, team_j, figdir)
+        print(f"  scoreline heatmap -> {p}")
+
+    # ── Optional: visualizations ─────────────────────────────────────────────
+    if plots:
+        from datetime import date
+        from src.output.visualize import generate_all
+        figdir = f"results/{date.today().isoformat()}/figures"
+        print(f"\n[figures] Writing visualizations to {figdir}/")
+        generate_all(
+            model, GROUPS, group_pos_probs, mc_results, figdir,
+            calibrator=calibrator, test_pred_df=test_pred_df,
         )
 
     print("\nDone.")
@@ -210,6 +240,10 @@ if __name__ == "__main__":
                         help="Bootstrap samples for match report CIs (default 500)")
     parser.add_argument("--ignore-results", action="store_true",
                         help="Ignore played WC matches (pure pre-tournament predictions)")
+    parser.add_argument("--plots", action="store_true",
+                        help="Generate visualizations into results/<date>/figures/")
+    parser.add_argument("--load-calibrator", action="store_true",
+                        help="Reuse saved calibrator, skip the ~5-min evaluation (fast daily run)")
     args = parser.parse_args()
 
     main(
@@ -222,4 +256,6 @@ if __name__ == "__main__":
         match=tuple(args.match) if args.match else None,
         n_bootstrap=args.n_bootstrap,
         ignore_results=args.ignore_results,
+        plots=args.plots,
+        load_calibrator=args.load_calibrator,
     )

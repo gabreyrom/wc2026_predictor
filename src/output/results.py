@@ -295,6 +295,48 @@ def save_match_scorelines(
     return df
 
 
+# ── Per-team probability of scoring (1+ goals) ───────────────────────────────
+
+def save_match_scoring_probs(
+    model: DixonColesModel,
+    groups: dict[str, list[str]],
+    results_dir: str = "results",
+) -> pd.DataFrame:
+    """
+    For every group fixture, the probability that each team scores 1+ goals.
+
+    From the score matrix M (M[x, y] = P(home scores x, away scores y)):
+        P(home scores ≥ 1) = 1 − Σ_y M[0, y]   (1 − first row)
+        P(away scores ≥ 1) = 1 − Σ_x M[x, 0]   (1 − first column)
+
+    Output columns: home_team, prob_home, away_team, prob_away
+    (prob_* = that team's probability of scoring at least one goal).
+    """
+    from itertools import combinations
+    from src.simulation.group_stage import host_flags
+
+    rows = []
+    for group_name in sorted(groups):
+        for home, away in combinations(groups[group_name], 2):
+            if home not in model.alpha or away not in model.alpha:
+                continue
+            h_i, h_j = host_flags(home, away)
+            mat = model.predict(home, away, match_importance=1.0,
+                                home_i=h_i, home_j=h_j)["score_matrix"]
+            rows.append({
+                "home_team": home,
+                "prob_home": round(float(1.0 - mat[0, :].sum()), 4),
+                "away_team": away,
+                "prob_away": round(float(1.0 - mat[:, 0].sum()), 4),
+            })
+
+    df = pd.DataFrame(rows)
+    path = _daily_dir(results_dir) / "prob_match_scoring.csv"
+    df.to_csv(path, index=False)
+    print(f"Saved scoring probabilities for {len(df)} matches -> {path}")
+    return df
+
+
 # ── All-104-matches probabilities with confidence intervals ──────────────────
 
 def save_match_probabilities(

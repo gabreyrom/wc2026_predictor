@@ -49,7 +49,7 @@ git clone https://github.com/your-username/wc2026_predictor.git
 cd wc2026_predictor
 python3 -m venv .venv
 source .venv/bin/activate
-pip install pandas numpy scipy scikit-learn lightgbm joblib tqdm
+pip install pandas numpy scipy scikit-learn lightgbm joblib tqdm matplotlib
 ```
 
 ---
@@ -67,7 +67,9 @@ That's the full pipeline (~8–10 min): downloads data on first run, fits all mo
 
 | Argument | Default | Description |
 |---|---|---|
-| `--match TEAM1 TEAM2` | — | Deep dive on any matchup: probabilities, confidence intervals, likely scorelines |
+| `--match TEAM1 TEAM2` | — | Deep dive on any matchup: probabilities, CIs, scorelines + saves its heatmap |
+| `--load-calibrator` | off | Reuse the saved calibrator, skip the ~5-min evaluation (fast daily run) |
+| `--plots` | off | Generate the tournament figures into `results/<date>/figures/` |
 | `--n-mc N` | 100,000 | Number of tournament simulations |
 | `--skip-calibration` | off | Skip evaluation + LightGBM — fastest run (~90s), raw model only |
 | `--n-bootstrap N` | 500 | Samples behind each confidence interval |
@@ -79,9 +81,21 @@ That's the full pipeline (~8–10 min): downloads data on first run, fits all mo
 # Quick sanity check
 python main.py --skip-calibration --n-mc 10000
 
-# What happens if Brazil meets France?
-python main.py --match Brazil France
+# Deep dive on a single match (multi-word names need quotes)
+python main.py --match "South Korea" "South Africa"
 ```
+
+### Daily workflow during the tournament
+
+The model parameters never change once the data is fixed (through the eve of kickoff), so day to day you only need the **fast path** — reuse the saved calibrator and re-condition on the latest results:
+
+```bash
+# 1. Enter yesterday's scores in data/wc2026_results.csv (set played=1)
+# 2. Re-run, reusing the calibrator and regenerating figures (~2 min):
+python main.py --plots --load-calibrator
+```
+
+Run a **full** `python main.py --plots` only when the underlying data changes (e.g. after `--force-download`) — that refreshes the validation scorecard and the calibration-curve figure.
 
 ---
 
@@ -158,7 +172,8 @@ Each run writes that day's complete output set (same-day reruns overwrite in pla
 - `group_position_probs.csv` — per-group 1st/2nd/3rd/4th + expected pts/GD/GF
 - `match_scorelines.csv` — top-5 most likely scorelines per group fixture
 - `match_probabilities.csv` — all 104 matches with probabilities + 90% CIs
-- `figures/` — visualizations (planned)
+- `prob_match_scoring.csv` — P(each team scores 1+ goals) per group fixture
+- `figures/` — visualizations (`--plots`)
 
 ---
 
@@ -194,7 +209,11 @@ wc2026_predictor/
 │   │
 │   └── output/
 │       ├── results.py             # Tournament table + all CSV outputs
-│       └── match_report.py       # Per-match deep dive
+│       ├── match_report.py       # Per-match deep dive
+│       └── visualize.py          # Tournament figures (--plots) + match heatmap
+│
+├── notebooks/
+│   └── wc_eda.ipynb               # Loads the latest snapshot: scorelines + figures
 │
 ├── data/                          # Inputs (market values, teams, live results)
 ├── results/                       # One folder per day of predictions
@@ -403,12 +422,21 @@ Every model simplifies; the important thing is knowing what and why. In rough or
 
 ---
 
-## Visualizations *(coming soon)*
+## Visualizations
 
-Planned, rendered into each day's `results/<date>/figures/`:
+`python main.py --plots` renders six tournament-level figures into `results/<date>/figures/`:
 
-- Group qualification heat map (team × position)
-- Tournament progression chart (R32 → Winner per team)
-- Prediction evolution across matchdays (from the daily snapshots)
-- Draw calibration curve (DC vs LGBM vs actual)
-- Team strength map: attack vs defense scatter
+| Figure | What it shows |
+|---|---|
+| `group_heatmap` | P(finish 1st/2nd/3rd/4th) for every team, all 12 groups at a glance |
+| `title_race` | Top teams by P(win the tournament), horizontal bars |
+| `bracket` | Modal knockout bracket — most likely team in each slot, paths drawn |
+| `attack_defense` | Team-strength map: α (attack) vs β (defense), colored by confederation |
+| `strength_vs_value` | Model P(win) vs squad market value — who the model rates above/below their price |
+| `calibration_curve` | Reliability diagram (DC vs DC+LGBM vs perfect) — the honesty check |
+
+A seventh, **per-match scoreline heatmap**, is produced on demand by `--match A B` (saved as `match_<A>_vs_<B>.png`) — not on a plain `--plots` run.
+
+**Browsing the output:** [`notebooks/wc_eda.ipynb`](notebooks/wc_eda.ipynb) auto-loads the most recent snapshot and displays the scorelines table plus every figure for that day, one per cell. Re-run it after each `main.py` run. (Needs Jupyter: `pip install jupyterlab`.)
+
+*Planned next:* prediction-evolution chart — P(advance) per team across matchdays, fed by the accumulating daily snapshots.

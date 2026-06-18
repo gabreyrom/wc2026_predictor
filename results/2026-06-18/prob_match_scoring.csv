@@ -1,0 +1,73 @@
+home_team,prob_home,away_team,prob_away
+Mexico,0.808,South Korea,0.517
+Mexico,0.8652,South Africa,0.3926
+Mexico,0.8559,Czech Republic,0.556
+South Korea,0.7586,South Africa,0.5515
+South Korea,0.747,Czech Republic,0.729
+South Africa,0.6099,Czech Republic,0.7951
+Canada,0.6383,Switzerland,0.7074
+Canada,0.9335,Qatar,0.3298
+Canada,0.7713,Bosnia and Herzegovina,0.4543
+Switzerland,0.9786,Qatar,0.3749
+Switzerland,0.8768,Bosnia and Herzegovina,0.509
+Qatar,0.4943,Bosnia and Herzegovina,0.8498
+Brazil,0.599,Morocco,0.6491
+Brazil,0.8906,Scotland,0.6962
+Brazil,0.9712,Haiti,0.5326
+Morocco,0.7103,Scotland,0.4413
+Morocco,0.8629,Haiti,0.3104
+Scotland,0.8957,Haiti,0.5934
+United States,0.6859,Paraguay,0.7922
+United States,0.7195,Australia,0.7613
+United States,0.7649,Turkey,0.8709
+Paraguay,0.6188,Australia,0.5512
+Paraguay,0.6666,Turkey,0.6817
+Australia,0.6327,Turkey,0.7153
+Germany,0.5848,Ecuador,0.5901
+Germany,0.754,Ivory Coast,0.5524
+Germany,0.9883,Curaçao,0.3835
+Ecuador,0.5256,Ivory Coast,0.3438
+Ecuador,0.9065,Curaçao,0.2239
+Ivory Coast,0.8819,Curaçao,0.3326
+Netherlands,0.5397,Japan,0.66
+Netherlands,0.8719,Tunisia,0.4637
+Netherlands,0.9248,Sweden,0.6901
+Japan,0.7878,Tunisia,0.2868
+Japan,0.8579,Sweden,0.4704
+Tunisia,0.676,Sweden,0.8143
+Belgium,0.8119,Iran,0.6235
+Belgium,0.7547,Egypt,0.4817
+Belgium,0.9181,New Zealand,0.3877
+Iran,0.6138,Egypt,0.5329
+Iran,0.8162,New Zealand,0.4333
+Egypt,0.6801,New Zealand,0.3798
+Spain,0.7217,Uruguay,0.4799
+Spain,0.9264,Saudi Arabia,0.396
+Spain,0.9615,Cape Verde,0.3864
+Uruguay,0.7121,Saudi Arabia,0.3754
+Uruguay,0.7887,Cape Verde,0.3661
+Saudi Arabia,0.6985,Cape Verde,0.6055
+France,0.7946,Senegal,0.6606
+France,0.74,Norway,0.7482
+France,0.8531,Iraq,0.3951
+Senegal,0.6401,Norway,0.784
+Senegal,0.7666,Iraq,0.428
+Norway,0.8439,Iraq,0.3784
+Argentina,0.6536,Austria,0.3288
+Argentina,0.655,Algeria,0.3597
+Argentina,0.9272,Jordan,0.2893
+Austria,0.5524,Algeria,0.5917
+Austria,0.8618,Jordan,0.4965
+Algeria,0.8907,Jordan,0.4978
+Portugal,0.7635,Colombia,0.7145
+Portugal,0.8196,Uzbekistan,0.4288
+Portugal,0.6814,DR Congo,0.4086
+Colombia,0.8257,Uzbekistan,0.4817
+Colombia,0.6886,DR Congo,0.4601
+Uzbekistan,0.4062,DR Congo,0.5191
+England,0.7255,Croatia,0.4931
+England,0.8984,Panama,0.352
+England,0.8392,Ghana,0.3277
+Croatia,0.889,Panama,0.5477
+Croatia,0.8274,Ghana,0.5162
+Panama,0.6743,Ghana,0.7232
