@@ -1,10 +1,10 @@
 # FIFA World Cup 2026 Predictor
 
-A statistical model that predicts the FIFA World Cup 2026 — every match, every group, and each team's probability of lifting the trophy.
+This a statistical model for predicting matches and the winner of the FIFA World Cup 2026.
 
-**How it works, in three sentences:** the model learns how good every national team is at scoring and defending from 32,000 historical matches (recent games count more, home teams get a measured boost), and predicts the probability of every possible scoreline. A second layer corrects those probabilities using squad market values and Elo ratings — two signals that detect changes in a team's real quality before the core model's strength estimates catch up. Finally, it plays the entire World Cup 100,000 times on the official bracket and counts how often each team reaches each round.
+**How it works:** the model learns how good every national team is at scoring and defending from 32,000 historical matches (recent games count more and home teams get a boost), then predicts the probability of every possible scoreline. A second layer corrects those probabilities using squad market values and a self calculated Elo rating. Finally, it plays the entire tournament 100,000 times using the official bracket criteria and counts how often each team reaches each round.
 
-On matches from 2022 onward — which no part of the model ever saw during training — it predicts outcomes **21% better than random guessing**, and every modeling decision along the way was kept or rejected based on measured, statistically-tested improvement (details in [Design Decisions](#design-decisions)).
+On matches from 2022 onward (used as test and which no part of the model ever saw during training) it predicts outcomes **21% better than random guessing**. I have kept track of every modeling decision along the way, please refeer to the [Design Decisions](#design-decisions) section.
 
 ---
 
@@ -27,13 +27,13 @@ On matches from 2022 onward — which no part of the model ever saw during train
 
 ## Quick Overview
 
-| Component | In plain terms |
+| Component | QUick Overview |
 |---|---|
-| **Dixon-Coles model** | Learns each team's attack and defense strength from match history; predicts full scorelines, not just winners |
-| **Context-dependent ρ** | Knows that tight, high-stakes games between equal teams end 0-0 or 1-1 more often |
-| **LightGBM calibrator** | Second opinion based on squad market values and Elo — catches teams whose quality changed faster than the core model's estimates |
-| **Tournament simulation** | Plays the real bracket 100,000 times: groups, third-place rules, extra time, penalties — and conditions on real results as matches are played |
-| **Confidence intervals** | Every probability comes with an honest "how sure are we" range — wide for teams we know little about |
+| **Dixon-Coles model** | Learns each team's attack and defense strength from previous match history. It predicts the full scorelines. |
+| **Context-dependent ρ** | Adjusts for  game context, for example: high-stakes games between equal teams end 0-0 or 1-1 more often |
+| **LightGBM calibrator** | Second opinion based on squad market values and Elo |
+| **Tournament simulation** | Plays the real bracket 100,000 times: groups, third-place rules, extra time, penalties |
+| **Confidence intervals** | Every probability comes with a range |
 
 ---
 
@@ -45,7 +45,7 @@ Requires Python 3.13+ (and `libomp` on macOS for LightGBM):
 # macOS only
 brew install libomp
 
-git clone https://github.com/your-username/wc2026_predictor.git
+git clone https://github.com/gabreyrom/wc2026_predictor.git
 cd wc2026_predictor
 python3 -m venv .venv
 source .venv/bin/activate
@@ -60,43 +60,30 @@ pip install pandas numpy scipy scikit-learn lightgbm joblib tqdm matplotlib
 source .venv/bin/activate
 python main.py
 ```
-
-That's the full pipeline (~8–10 min): downloads data on first run, fits all models, simulates the tournament, and writes everything to `results/<today>/`.
+The full pipeline takes from 8 to 10 min.
+It downloads necesarry data on the first run, fits all models, simulates the tournament and write outputs on todays folder (`results/<today>/`).
 
 ### Useful options
 
 | Argument | Default | Description |
 |---|---|---|
 | `--match TEAM1 TEAM2` | — | Deep dive on any matchup: probabilities, CIs, scorelines + saves its heatmap |
-| `--load-calibrator` | off | Reuse the saved calibrator, skip the ~5-min evaluation (fast daily run) |
-| `--plots` | off | Generate the tournament figures into `results/<date>/figures/` |
+| `--load-calibrator` | off | Reuse the saved calibrator, "saves" around 5 minutes compared to a full run |
+| `--plots` | off | Generates plots and saves them in the corresponding `results/<date>/figures/` |
 | `--n-mc N` | 100,000 | Number of tournament simulations |
-| `--skip-calibration` | off | Skip evaluation + LightGBM — fastest run (~90s), raw model only |
+| `--skip-calibration` | off | Skip evaluation + LightGBM, raw model only |
 | `--n-bootstrap N` | 500 | Samples behind each confidence interval |
-| `--ignore-results` | off | Ignore played WC matches — pure pre-tournament predictions |
+| `--ignore-results` | off | Ignore played WC matches —pure pre-tournament predictions |
 | `--force-download` | off | Re-download match data |
 | `--seed N` | 42 | Reproducibility |
 
 ```bash
-# Quick sanity check
+# Example run # 1
 python main.py --skip-calibration --n-mc 10000
 
-# Deep dive on a single match (multi-word names need quotes)
-python main.py --match "South Korea" "South Africa"
+# Single match deepdive 
+python main.py --match "Mexico" "South Africa"
 ```
-
-### Daily workflow during the tournament
-
-The model parameters never change once the data is fixed (through the eve of kickoff), so day to day you only need the **fast path** — reuse the saved calibrator and re-condition on the latest results:
-
-```bash
-# 1. Enter yesterday's scores in data/wc2026_results.csv (set played=1)
-# 2. Re-run, reusing the calibrator and regenerating figures (~2 min):
-python main.py --plots --load-calibrator
-```
-
-Run a **full** `python main.py --plots` only when the underlying data changes (e.g. after `--force-download`) — that refreshes the validation scorecard and the calibration-curve figure.
-
 ---
 
 ## Pipeline
@@ -136,9 +123,7 @@ Historical results (32k matches, 1990 → WC kickoff)   Transfermarkt squad valu
 Outputs: top-5 champions, tournament table, daily CSV snapshots, per-match CIs
 ```
 
-**Why multiple Dixon-Coles fits?** The production model uses all data up to the eve of the tournament — you want the freshest form when predicting 2026. But you can't grade a model on matches it trained on. So separate models, each fitted only on the past relative to the matches they're scored on, produce the honest evaluation numbers and the calibrator's training data. The calibrator trains across three model vintages, making it robust to the shift between evaluation-time and production-time inputs.
-
-**Why exact + Monte Carlo?** Group standings can be enumerated exactly (3⁶ = 729 outcome combinations per group). But ranking 12 third-place teams across groups and playing the knockout bracket is only tractable by simulation.
+**Why multiple Dixon-Coles fits?** The production model uses all data up to before the tournament start. But a model can't be graded on matches its trained on. So separate models, each fitted only on the past relative to the matches they're scored on, produce the honest evaluation numbers and the calibrator's training data. The calibrator trains across three model vintages, making it robust to the shift between evaluation-time and production-time inputs.
 
 ---
 
@@ -146,19 +131,19 @@ Outputs: top-5 champions, tournament table, daily CSV snapshots, per-match CIs
 
 ### Match history — `data/raw/results.csv`
 
-~49,000 international results (1872 to present) from the canonical [martj42 dataset](https://github.com/martj42/international_results), updated within days of each match. Filtered to 1990 onward and capped at the WC kickoff (32,287 matches after cleaning, through 2026-06-10). Auto-downloaded on first run.
+~49,000 international results (1872 to present) from the canonical [martj42 dataset](https://github.com/martj42/international_results), updated within days of each match. Filtered to 1990 onward and capped at the WC 2026 kickoff (32,287 matches after cleaning, through 2026-06-10). Auto-downloaded on first run.
 
 Two data-quality notes baked into cleaning:
-- **Hard training cutoff at 2026-06-11.** The source pre-populates WC fixtures and fills scores as they're played; the cutoff keeps every WC match *out of training* so the tournament can't leak into the model — they enter only through the conditioning system below.
-- **Tournament categorization** was corrected to match the source's exact names (e.g. "African Cup of Nations", "Gold Cup") — ~4,000 competitive matches that were silently mislabeled as friendlies now carry their proper weight, which matters for the many African and CONCACAF teams in this World Cup. UEFA and CONCACAF Nations League are tracked as their own categories.
+- **Hard training cutoff at 2026-06-11.** The source pre-populates WC fixtures and fills scores as they're played; the cutoff keeps every WC match *out of training* so the tournament can't leak into the model.
+- **Tournament categorization** tournament types are categorized and grouped for the our own Elo computation.
 
 ### Squad market values — `data/market_values.json`
 
-Total squad value (M€) for **204 national teams** at five era snapshots (2013 / 2016 / 2019 / 2022 / 2025), scraped once from Transfermarkt's historical season squad pages — which show **era-appropriate player values** (verified: De Gea €70m on the 2019 page vs ~€10m today), so no future information leaks into training. Each match uses the latest snapshot at or before its date. Builder: `src/data/fetch_market_values.py` (one-time; the pipeline never hits Transfermarkt at runtime).
+Total squad value (M€) for **204 national teams** at five era snapshots (2013 / 2016 / 2019 / 2022 / 2025), scraped  from Transfermarkt's historical season squad pages, so no future information leaks into training. Each match uses the latest snapshot at or before its date. Builder: `src/data/fetch_market_values.py`.
 
 ### Live tournament results — `data/wc2026_results.csv`
 
-All 72 group fixtures with official dates. Updated manually after each matchday (fill scores, set `played=1`; for knockout shootouts also `winner`). Every played match **conditions the simulation**: the group enumeration and Monte Carlo treat it as fact — actual goals feed the tiebreakers, real knockout winners advance — while the model parameters stay frozen at the pre-tournament fit. `--ignore-results` recovers pure pre-tournament predictions.
+All 104 fixtures with official dates. Updated manually after each matchday (fill scores, set `played=1`; for knockout shootouts also adding the `winner` flag). `--ignore-results` recovers pure pre-tournament predictions.
 
 ### WC 2026 draw — `tournament/wc2026_draw.py`
 
@@ -226,7 +211,7 @@ wc2026_predictor/
 
 ### 1. Dixon-Coles bivariate Poisson
 
-Plain Poisson models treat each team's goals as independent — but real football produces more 0-0 and 1-1 draws than independence predicts. Dixon & Coles (1997) fix exactly that with a correction factor on the four low-score outcomes:
+Plain Poisson models treat each team's goals as independent,  but real football produces more 0-0 and 1-1 draws than independence predicts. Dixon & Coles (1997) fix exactly that with a correction factor on the four low-score outcomes:
 
 ```
 P(X=x, Y=y) = τ(x, y, λ, μ, ρ) · Poisson(x; λ) · Poisson(y; μ)
@@ -243,21 +228,21 @@ Home teams win 50.7% of non-neutral matches vs 25.7% for visitors (1.69 vs 1.01 
 log λ = α_i − β_j + η·home        fitted η = 0.247  →  ×1.28 goals at home
 ```
 
-The WC 2026 hosts (USA, Mexico, Canada) get this boost. Adding η was the single largest improvement in the project's history — much of what looked like "the model overpredicts draws" was actually unmodeled home advantage.
+The WC 2026 hosts (USA, Mexico, Canada) get this boost. Adding η was the single largest improvement.
 
 ### 3. Context-dependent ρ
 
-The low-score correction varies with the match: a cagey knockout game between equals is not a friendly between mismatched sides.
+The low-score correction varies with the match: a knockout game between equals is not a friendly between mismatched sides.
 
 ```
 ρ(match) = −0.99 / (1 + exp(−(γ₀ + γ₁·|Δα| + γ₂·importance)))
 ```
 
-The sigmoid keeps ρ valid by construction; an L2 penalty keeps the coefficients from drifting into flat regions of the likelihood where the correction silently dies (this happened once — the penalty is the scar tissue). Fitted: ρ ≈ −0.16 for equal teams, weaker for mismatches.
+The sigmoid keeps ρ valid by construction; an the L2 regularization prevents the coefficients from drifting into flat regions of the likelihood where the correction silently dies. Fitted: ρ ≈ −0.16 for equal teams, weaker for mismatches.
 
 ### 4. Identifiability
 
-Adding a constant to every attack rating and every defense rating changes nothing in the predictions — the parameterization has one free direction. A soft sum-to-zero constraint (Σα = Σβ = 0) pins it, making the parameters unique and the uncertainty math well-defined.
+Adding a constant to every attack rating and every defense rating changes nothing in the predictions (the parameterization has one free direction). A soft sum-to-zero constraint (Σα = Σβ = 0) pins it, making the parameters unique and the uncertainty math well-defined.
 
 ### 5. Training and validation: three nested layers
 
