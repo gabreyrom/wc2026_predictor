@@ -4,7 +4,7 @@ This is a statistical model for predicting individual matches and the overall wi
 
 **How it works:** the model learns how good every national team is at scoring and defending from 32,000 historical matches (recent games count for more, and home teams get a boost), then turns that into the probability of every possible scoreline. A second layer adjusts those probabilities using squad market values and a self-calculated Elo rating. Finally, it plays the whole tournament 100,000 times following the official bracket rules and counts how often each team reaches each round.
 
-On matches from 2022 onward, held out as a test set that no part of the model saw during training, it predicts outcomes about **21% better than random guessing**. Every modeling decision along the way is written up in the [Design Decisions](#design-decisions) section.
+**On matches from 2022 onward, held out as a test set that no part of the model saw during training, it predicts outcomes about **21% better than random guessing**. Every modeling decision along the way is written up in the [Design Decisions](#design-decisions) section.**
 ---
 
 ## Table of Contents
@@ -53,7 +53,7 @@ Each row is a team, each column a finishing position, and the color is the proba
 
 **Inside a single match**
 
-![Scoreline probability heatmap for one fixture, home goals on one axis and away goals on the other](results/2026-06-18/figures/match_heatmap_sample.png)
+![Scoreline probability heatmap for one fixture, home goals on one axis and away goals on the other](results/2026-06-18/figures/match_Mexico_vs_South_Korea.png)
 
 Produced by `--match A B`. Home goals run along one axis, away goals along the other, and each cell is colored by the probability of that exact scoreline. The brightest cells are the likeliest results, and the way the mass leans toward one corner shows which side is favored and by how much. This is the Dixon-Coles distribution itself, the thing the win/draw/loss numbers are summed up from.
 
