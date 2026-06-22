@@ -4,7 +4,8 @@ This is a statistical model for predicting individual matches and the overall wi
 
 **How it works:** the model learns how good every national team is at scoring and defending from 32,000 historical matches (recent games count for more, and home teams get a boost), then turns that into the probability of every possible scoreline. A second layer adjusts those probabilities using squad market values and a self-calculated Elo rating. Finally, it plays the whole tournament 100,000 times following the official bracket rules and counts how often each team reaches each round.
 
-**On matches from 2022 onward, held out as a test set that no part of the model saw during training, it predicts outcomes about **21% better than random guessing**. Every modeling decision along the way is written up in the [Design Decisions](#design-decisions) section.**
+On matches from 2022 onward, hel out as a test set that no part of the model saw during training, it predicts outcomes about **21% better than random guessing**. Every modelint decision along the way is written up in the [Design Decisions](#design-decisions) section.
+
 ---
 
 ## Table of Contents
@@ -493,9 +494,9 @@ To browse a run, [`notebooks/wc_eda.ipynb`](notebooks/wc_eda.ipynb) auto-loads t
 
 ## Caveats
 
-No model is the territory. These are the deliberate shortcuts and the hard limits behind the numbers, roughly in order of how much they move the results.
+Every model trades some realism for tractability. Here's what this one assumes, and where it falls short.
 
-### Deliberate simplifications
+### Assumptions
 
 - **The calibrator changes who wins, not the scoreline.** When market values say a team is better than its results suggest, the simulation makes it win more often, but its winning scorelines keep their original shape (it won't start winning 4-0 instead of 2-0). This only matters for goal-difference tiebreakers.
 - **Group-table tiebreakers use a shortcut.** The "exact" group tables break ties on expected goals rather than every possible scoreline, and skip head-to-head. The measured cost is up to about 6pp on a team's top-2 probability. The Monte Carlo handles tiebreakers properly and drives every headline number; the shortcut only feeds the display tables.
@@ -504,7 +505,7 @@ No model is the territory. These are the deliberate shortcuts and the hard limit
 - **Third-place assignment picks one valid option.** Where FIFA's table might choose another arrangement among equals, the model picks one, and who-can-meet-whom is always respected.
 - **Pre-2013 matches reuse the 2013 value snapshot.** No older Transfermarkt data exists, but the calibrator only trains on predictions from 2016 onward, so these fall outside its window entirely.
 
-### Hard limits
+### Main constraints
 
 - **No squad or injury data.** "Brazil" is a single fixed entity no matter who actually takes the field.
 - **The confidence intervals don't cover everything.** They measure how uncertain the team strengths are, not whether the Poisson model itself is right. No interval can capture "the assumption is off," so read them as rough 90% ranges, not a guarantee.
@@ -532,4 +533,11 @@ No model is the territory. These are the deliberate shortcuts and the hard limit
 
 - **Transfermarkt.** Squad market values (era snapshots from historical season squad pages).
   [https://www.transfermarkt.com](https://www.transfermarkt.com)
+
+## Author
+
+**Gabriel Reynoso** — Data Scientist
+[LinkedIn](https://www.linkedin.com/in/gabrielreynosorom) · [GitHub](https://github.com/gabreyrom)
+
+Questions, ideas, or spotted a bug? Open an issue or reach out.
 
