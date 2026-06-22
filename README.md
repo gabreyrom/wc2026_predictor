@@ -26,7 +26,7 @@ On matches from 2022 onward, hel out as a test set that no part of the model saw
 
 ## Quick Overview
 
-| Component | QUick Overview |
+| Component | Quick Overview |
 |---|---|
 | **Dixon-Coles model** | Learns each team's attack and defense strength from previous match history. It predicts the full scorelines. |
 | **Context-dependent ρ** | Adjusts for  game context, for example: high-stakes games between equal teams end 0-0 or 1-1 more often |
