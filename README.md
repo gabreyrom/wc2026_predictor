@@ -4,7 +4,7 @@ This is a statistical model for predicting individual matches and the overall wi
 
 **How it works:** the model learns how good every national team is at scoring and defending from 32,000 historical matches (recent games count for more, and home teams get a boost), then turns that into the probability of every possible scoreline. A second layer adjusts those probabilities using squad market values and a self-calculated Elo rating. Finally, it plays the whole tournament 100,000 times following the official bracket rules and counts how often each team reaches each round.
 
-On matches from 2022 onward, hel out as a test set that no part of the model saw during training, it predicts outcomes about **21% better than random guessing**. Every modelint decision along the way is written up in the [Design Decisions](#design-decisions) section.
+On matches from 2022 onward, held out as a test set that no part of the model saw during training, it predicts outcomes about **21% better than random guessing**. Every modeling decision along the way is written up in the [Design Decisions](#design-decisions) section.
 
 ---
 
@@ -90,7 +90,7 @@ source .venv/bin/activate
 python main.py
 ```
 The full pipeline takes from 8 to 10 min.
-It downloads necesarry data on the first run, fits all models, simulates the tournament and write outputs on todays folder (`results/<today>/`).
+It downloads necesary data on the first run, fits all models, simulates the tournament and write outputs on today folder (`results/<today>/`).
 
 ### Useful options
 
@@ -102,7 +102,7 @@ It downloads necesarry data on the first run, fits all models, simulates the tou
 | `--n-mc N` | 100,000 | Number of tournament simulations |
 | `--skip-calibration` | off | Skip evaluation + LightGBM, raw model only |
 | `--n-bootstrap N` | 500 | Samples behind each confidence interval |
-| `--ignore-results` | off | Ignore played WC matches —pure pre-tournament predictions |
+| `--ignore-results` | off | Ignore played WC matches —only pre-tournament predictions |
 | `--force-download` | off | Re-download match data |
 | `--seed N` | 42 | Reproducibility |
 
@@ -110,7 +110,7 @@ It downloads necesarry data on the first run, fits all models, simulates the tou
 # Example run # 1
 python main.py --skip-calibration --n-mc 10000
 
-# Single match deepdive 
+# Single match deep dive 
 python main.py --match "Mexico" "South Africa"
 ```
 ---
