@@ -5,10 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="Add prediction evolution charts; implement loading and plotting of tournament snapshots">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/processed/wc2026_probs.csv" beforeDir="false" afterPath="$PROJECT_DIR$/data/processed/wc2026_probs.csv" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/output/results.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/output/results.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -90,7 +87,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1781040041722</updated>
-      <workItem from="1781040042735" duration="67705000" />
+      <workItem from="1781040042735" duration="68482000" />
     </task>
     <task id="LOCAL-00001" summary="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure.">
       <option name="closed" value="true" />
@@ -260,7 +257,15 @@
       <option name="project" value="LOCAL" />
       <updated>1782274372598</updated>
     </task>
-    <option name="localTasksCounter" value="22" />
+    <task id="LOCAL-00022" summary="Add prediction evolution charts; implement loading and plotting of tournament snapshots">
+      <option name="closed" value="true" />
+      <created>1782275581234</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1782275581234</updated>
+    </task>
+    <option name="localTasksCounter" value="23" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

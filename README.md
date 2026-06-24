@@ -29,7 +29,7 @@ On matches from 2022 onward, held out as a test set that no part of the model sa
 | Component | What it does |
 |---|---|
 | **Dixon-Coles model** | Learns each team's attack and defense strength from past match history, and predicts the full scoreline distribution |
-| **Context-dependent ρ** | Adjusts for game context — high-stakes games between equal teams end 0-0 or 1-1 more often |
+| **Context-dependent ρ** | Adjusts for game context: high-stakes games between equal teams end 0-0 or 1-1 more often |
 | **LightGBM calibrator** | Second opinion based on squad market values and Elo |
 | **Tournament simulation** | Plays the real bracket 100,000 times: groups, third-place rules, extra time, penalties |
 | **Confidence intervals** | Every probability comes with a range |
@@ -101,7 +101,7 @@ The full pipeline takes 8 to 10 minutes. It downloads the necessary data on the 
 | `--n-mc N` | 100,000 | Number of tournament simulations |
 | `--skip-calibration` | off | Skip evaluation + LightGBM, raw model only |
 | `--n-bootstrap N` | 500 | Samples behind each confidence interval |
-| `--ignore-results` | off | Ignore played WC matches — pure pre-tournament predictions |
+| `--ignore-results` | off | Ignore played WC matches: pure pre-tournament predictions |
 | `--force-download` | off | Re-download match data |
 | `--seed N` | 42 | Reproducibility |
 
@@ -109,7 +109,7 @@ The full pipeline takes 8 to 10 minutes. It downloads the necessary data on the 
 # Example run # 1
 python main.py --skip-calibration --n-mc 10000
 
-# Single match deep dive 
+# Single match deep dive
 python main.py --match "Mexico" "South Africa"
 ```
 ---
@@ -280,9 +280,9 @@ Adding the same constant to every attack rating and every defense rating leaves 
 
 The whole setup exists to answer one obvious question: how good is this model on matches it has never seen? You can't just check it against its own training data, every model looks brilliant on games it has already seen. And the usual fix, shuffling matches into random train/test folds, breaks for time series: you'd predict a 2019 game with a model that trained on 2020. So the rule throughout is simple, training always comes before the matches it's judged on. That one rule produces three layers.
 
-**Layer 1: fit the core model.** Dixon-Coles finds the attack/defense parameters that make the real scorelines most likely, with recent matches weighted more heavily (exp(−0.003 · days_ago), half-life ≈ 231 days) so current form dominates. Nothing to cross-validate here — it's a single fit. The fact to carry forward: a model fitted up to 2016 has never heard of the matches played after. The next layer turns that blind spot into useful data.
+**Layer 1: fit the core model.** Dixon-Coles finds the attack/defense parameters that make the real scorelines most likely, with recent matches weighted more heavily (exp(−0.003 · days_ago), half-life ≈ 231 days) so current form dominates. Nothing to cross-validate here, it's a single fit. The fact to carry forward: a model fitted up to 2016 has never heard of the matches played after. The next layer turns that blind spot into useful data.
 
-**Layer 2 — the temporal "CV".** Several model vintages are fitted, each on a different slice of the past, and each only predicts the years that come after its training window:
+**Layer 2: the temporal "CV".** Several model vintages are fitted, each on a different slice of the past, and each only predicts the years that come after its training window:
 
 ```
 timeline:  2010 ════════ 2016 ────── 2018 ────── 2020 ────── 2022 ────── 2026
@@ -295,16 +295,16 @@ TEST:      [════════ train ════════════�
 
 Every prediction here is "what the model would have said at the time, before seeing the result." Stacked together (~5,300 of them), they become the training data for the calibrator, which needs to learn the mistakes the core model makes on unseen matches (going stale, mis-rating draws, missing value shifts). Feed it in-sample predictions instead and there'd be no real mistakes left to correct.
 
-**Layer 3 — tune the calibrator with ordinary 5-fold CV.** The LightGBM's hyperparameters are picked by plain random-fold CV — but inside the out-of-sample rows from Layer 2, so the time-ordering was already protected one level up. CV landed on num_leaves=3, barely more than a straight line: the correction is genuinely simple, and bigger trees just memorized noise.
+**Layer 3: tune the calibrator with ordinary 5-fold CV.** The LightGBM's hyperparameters are picked by plain random-fold CV, but inside the out-of-sample rows from Layer 2, so the time-ordering was already protected one level up. CV landed on num_leaves=3, barely more than a straight line: the correction is genuinely simple, and bigger trees just memorized noise.
 
-**The final scorecard.** Only now is the test set (2022+) opened — once. A model fitted on pre-2022 data predicts it, the calibrator corrects, and a paired bootstrap on per-match log-losses gives the verdict:
+**The final scorecard.** Only now is the test set (2022+) opened, and only once. A model fitted on pre-2022 data predicts it, the calibrator corrects, and a paired bootstrap on per-match log-losses gives the verdict:
 
 | Model | Test log-loss | vs. uniform baseline (1.0986) |
 |---|---|---|
 | Dixon-Coles (+ home advantage) | 0.9261 | +15.7% |
 | **DC + LightGBM (+ values & Elo)** | **0.8711** | **+20.7%** |
 
-The gap is **statistically significant** (calibrator vs raw DC: Δ = −0.055, 95% CI [−0.067, −0.044], p ≈ 0). Every other idea documented in this README faced this exact test; the ones that didn't beat it were dropped (§7). The model that actually predicts the tournament is then refitted on all data up to the eve of kickoff — the validation machinery exists only to tell us how far to trust it.
+The gap is **statistically significant** (calibrator vs raw DC: Δ = −0.055, 95% CI [−0.067, −0.044], p ≈ 0). Every other idea documented in this README faced this exact test; the ones that didn't beat it were dropped (§7). The model that actually predicts the tournament is then refitted on all data up to the eve of kickoff. The validation machinery exists only to tell us how far to trust it.
 
 *(Test set = international matches from 2022 onward, n = 4,552, none seen during fitting. The ~20% headline is stable across data refreshes.)*
 
@@ -315,13 +315,13 @@ The gap is **statistically significant** (calibrator vs raw DC: Δ = −0.055, 9
 After Dixon-Coles makes its prediction, a small second model (a CV-tuned LightGBM) takes a second look. It reads the DC win/draw/loss probabilities plus a couple of outside signals and nudges them. Its two most useful inputs both measure team strength in ways the core model picks up too slowly:
 
 - **`log(value_i / value_j)`** — squad market value ratio (Transfermarkt). Catches slow change: a golden generation shows up in player valuations long before it shows up in results.
-- **`elo_diff`** — pre-match Elo difference, catches *fast* change: Elo jumps the moment a big result lands, while the core model's time-weighted strengths only drift toward it over many matches. The K-factors are confederation-aware — a World Cup game counts more than a friendly, a UEFA qualifier more than a minor-confederation one (`match_k_factor` in `elo.py`).
+- **`elo_diff`** — pre-match Elo difference, catches *fast* change: Elo jumps the moment a big result lands, while the core model's time-weighted strengths only drift toward it over many matches. The K-factors are confederation-aware: a World Cup game counts more than a friendly, a UEFA qualifier more than a minor-confederation one (`match_k_factor` in `elo.py`).
 
-**Why add this if the core model already knows team strength?**  Because strength learned from past scores goes out of date, and it does so at two different speeds. Market values fix the slow drift, Elo fixes the fast drift — that's the calibrator's whole job. It's also why these signals live here and not inside Dixon-Coles itself: we tried that, and the attack/defense parameters just swallowed them with nothing left to show (§7). Each feature had to beat a paired-bootstrap test on unseen matches before it earned its place.
+**Why add this if the core model already knows team strength?**  Because strength learned from past scores goes out of date, and it does so at two different speeds. Market values fix the slow drift, Elo fixes the fast drift. That's the calibrator's whole job. It's also why these signals live here and not inside Dixon-Coles itself: we tried that, and the attack/defense parameters just swallowed them with nothing left to show (§7). Each feature had to beat a paired-bootstrap test on unseen matches before it earned its place.
 
 Training the calibrator across three model vintages (Layer 2 above) keeps it robust when it's handed the production model's slightly different outputs at the end.
 
-**How the Elo is computed.** In a single chronological pass over the full match history, each game nudges both teams' ratings by `K · (result − expected)`, where the expected result comes from the rating gap and is scaled up for bigger goal differences. Ratings are always read *before* a match, so a game never feeds its own feature. The weight `K` reflects what's at stake — our custom, confederation-aware ladder:
+**How the Elo is computed.** In a single chronological pass over the full match history, each game nudges both teams' ratings by `K · (result − expected)`, where the expected result comes from the rating gap and is scaled up for bigger goal differences. Ratings are always read *before* a match, so a game never feeds its own feature. The weight `K` reflects what's at stake, using our custom, confederation-aware ladder:
 
 | K | Competition |
 |---|---|
@@ -336,18 +336,18 @@ Training the calibrator across three model vintages (Layer 2 above) keeps it rob
 
 ### 7. What we tried that didn't make the cut
 
-Knowing what doesn't help shaped the model as much as what does. Each was tested the same way as everything else, and dropped because it didn't significantly improve the held-out loss — and in a couple of cases made it worse.
+Knowing what doesn't help shaped the model as much as what does. Each was tested the same way as everything else, and dropped because it didn't significantly improve the held-out loss, and in a couple of cases made it worse.
 
 | Idea | Why it didn't make it |
 |---|---|
 | Market values inside the core model | Team-strength parameters absorbed them; values only help out-of-sample, so they moved to the calibrator (§6) |
-| Recent form (points per game) | Made predictions *worse* — easy wins over weak teams masquerade as form |
+| Recent form (points per game) | Made predictions *worse*: easy wins over weak teams masquerade as form |
 | Opponent-adjusted momentum | Once strength is accounted for, "momentum" is mostly luck, and luck doesn't persist |
-| Draw-rate / form features in the calibrator | No measurable gain — dropped to keep the model simple |
+| Draw-rate / form features in the calibrator | No measurable gain: dropped to keep the model simple |
 | Squad age difference | No signal anywhere; *average* age doesn't capture key-player dependence |
 | Confederation matchup effects | Elo and market values (both confederation-neutral) already cover it; adding it only fit noise |
-| Squad value *trend* between snapshots | Zero effect — current value and Elo already reflect the rise; the path there adds nothing |
-| Star concentration (top players' share of value) | Zero effect — elite squads look nearly identical here; what matters is who's actually *available*, which needs lineup data |
+| Squad value *trend* between snapshots | Zero effect: current value and Elo already reflect the rise; the path there adds nothing |
+| Star concentration (top players' share of value) | Zero effect: elite squads look nearly identical here; what matters is who's actually *available*, which needs lineup data |
 
 The code for all of these is still in the repo and tested; main.py just doesn't feed them in.
 
@@ -497,8 +497,8 @@ Not a file, but the most readable view of a single matchup. Quote the calibrated
 | `bracket` | Modal knockout bracket: the most likely team in each slot, with the paths drawn through |
 | `strength_vs_value` | Model P(win) against squad market value: which teams the model rates above or below their price tag |
 | `calibration_curve` | Reliability diagram (raw DC vs calibrated vs a perfect model), the honesty check |
-| `evolution_title_race` | P(win) over time, one line per favorite — the title race as it shifts day to day |
-| `evolution_bubble` | P(reach R16) over time for the biggest movers — the group-stage drama |
+| `evolution_title_race` | P(win) over time, one line per favorite: the title race as it shifts day to day |
+| `evolution_bubble` | P(reach R16) over time for the biggest movers: the group-stage drama |
 
 The two `evolution_*` charts read every daily snapshot, so they appear once at least two days of predictions exist and gain detail with each matchday. A further figure, the per-match scoreline heatmap, is produced on demand by `--match A B` and saved as `match_<A>_vs_<B>.png` (the sample shown in Predictions is one of these). It isn't generated on a plain `--plots` run.
 
@@ -510,7 +510,7 @@ Once matches are played, `python evaluate.py [date]` grades a snapshot's predict
 
 **Match-level** (live as soon as any matches are played): the exact-scoreline hit rate (how often the single most likely score was right), the top-5 scoreline hit rate, outcome accuracy for both the raw and calibrated models, mean log-loss and Brier score against the coin-flip baseline (1.099), and a win/draw/loss confusion matrix. Trust the log-loss over raw accuracy here: a draw is rarely the model's single top pick, so in a draw-heavy run the accuracy understates how well it actually called the winners.
 
-**Tournament-level** (activates automatically once all 72 group matches are entered): scores the pre-tournament `P(reach R32)` against who actually qualified — how many of the real 32 the model had in its top 32, the qualification Brier and log-loss, and the biggest surprises in both directions.
+**Tournament-level** (activates automatically once all 72 group matches are entered): scores the pre-tournament `P(reach R32)` against who actually qualified: how many of the real 32 the model had in its top 32, the qualification Brier and log-loss, and the biggest surprises in both directions.
 
 ---
 
@@ -562,4 +562,3 @@ Every model trades some realism for tractability. Here's what this one assumes, 
 [LinkedIn](https://www.linkedin.com/in/gabrielreynosorom) · [GitHub](https://github.com/gabreyrom)
 
 Questions, ideas, or spotted a bug? Open an issue or reach out.
-
