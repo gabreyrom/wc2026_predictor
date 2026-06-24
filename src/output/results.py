@@ -468,10 +468,16 @@ def save_results(
     day_dir = _daily_dir(results_dir)
     Path(latest_path).parent.mkdir(parents=True, exist_ok=True)
 
-    # Tournament advancement table
-    mc_results.to_csv(latest_path, index=False)
+    # Tournament advancement table. Insert the group LETTER right after `team`
+    # (derived from group_pos_probs) so the CSV says which group each team is in.
+    mc_out = mc_results.copy()
+    if group_pos_probs is not None and "Group" not in mc_out.columns:
+        team_to_group = {t: g for g, tp in group_pos_probs.items() for t in tp}
+        mc_out.insert(1, "Group", mc_out["team"].map(team_to_group))
+
+    mc_out.to_csv(latest_path, index=False)
     versioned = day_dir / "tournament_probs.csv"
-    mc_results.to_csv(versioned, index=False)
+    mc_out.to_csv(versioned, index=False)
     print(f"Saved results -> {latest_path}")
     print(f"             -> {versioned}")
 
