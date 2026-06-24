@@ -27,12 +27,40 @@ import pandas as pd
 
 from src.data.confederations import CONFEDERATIONS
 
-# Confederation palette (used by the scatter plots)
+# ── Shared style ───────────────────────────────────────────────────────────────
+# Muted/editorial palette. Confederation colours kept (they encode real info)
+# but desaturated so the figures stop reading as matplotlib defaults.
 CONF_COLORS = {
-    "UEFA": "#4C72B0", "CONMEBOL": "#DDAA33", "CAF": "#2CA02C",
-    "AFC": "#C44E52", "CONCACAF": "#DD8452", "OFC": "#8172B3",
+    "UEFA": "#4E6E8E",      # slate blue
+    "CONMEBOL": "#C9A227",  # muted gold
+    "CAF": "#4F8A6B",       # sage green
+    "AFC": "#B0573F",       # terracotta
+    "CONCACAF": "#C77F4A",  # clay
+    "OFC": "#7A6A9B",       # dusty violet
 }
-_GREY = "#999999"
+_GREY = "#9AA0A6"
+_INK = "#2B2B2B"           # near-black for text (softer than pure black)
+_FAINT = "#E6E6E6"         # gridlines / hairlines
+
+# Try a cleaner font if present; fall back silently to the matplotlib default.
+plt.rcParams.update({
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Inter", "Helvetica Neue", "Arial", "DejaVu Sans"],
+    "axes.edgecolor": _GREY,
+    "axes.linewidth": 0.8,
+    "text.color": _INK,
+    "axes.labelcolor": _INK,
+    "xtick.color": _GREY,
+    "ytick.color": _INK,
+    "figure.facecolor": "white",
+    "axes.facecolor": "white",
+})
+
+
+def _despine(ax, keep=("left", "bottom")):
+    """Remove the matplotlib 'box'. Keep only the spines named in `keep`."""
+    for name, spine in ax.spines.items():
+        spine.set_visible(name in keep)
 
 
 def _conf_color(team: str) -> str:
@@ -92,22 +120,44 @@ def plot_title_race(mc_results: pd.DataFrame, outdir, top_n: int = 16) -> Path:
     top = mc_results.nlargest(top_n, "Winner").iloc[::-1]
     colors = [_conf_color(t) for t in top["team"]]
 
-    fig, ax = plt.subplots(figsize=(8, 7))
-    bars = ax.barh(top["team"], top["Winner"] * 100, color=colors)
-    for b, v in zip(bars, top["Winner"]):
-        ax.text(b.get_width() + 0.15, b.get_y() + b.get_height() / 2,
-                f"{v:.1%}", va="center", fontsize=8.5)
+    fig, ax = plt.subplots(figsize=(8, 7.5))
+    bars = ax.barh(top["team"], top["Winner"] * 100,
+                   color=colors, height=0.72, zorder=3)
 
-    ax.set_xlabel("P(win the World Cup)  [%]", fontsize=11)
-    ax.set_title("WC 2026 — title race", fontsize=13, weight="bold")
-    ax.margins(x=0.12)
-    # Confederation legend
-    seen = {CONFEDERATIONS.get(t) for t in top["team"]} - {None}
-    handles = [plt.Rectangle((0, 0), 1, 1, color=CONF_COLORS[c]) for c in sorted(seen)]
-    ax.legend(handles, sorted(seen), fontsize=8, loc="lower right", title="Confederation")
+    # value labels at the end of each bar
+    for b, v in zip(bars, top["Winner"]):
+        ax.text(b.get_width() + 0.2, b.get_y() + b.get_height() / 2,
+                f"{v:.1%}", va="center", ha="left",
+                fontsize=9, color=_INK, zorder=4)
+
+    # faint vertical reference lines instead of a boxed grid
+    ax.xaxis.grid(True, color=_FAINT, lw=0.8, zorder=0)
+    ax.set_axisbelow(True)
+    _despine(ax, keep=("left",))          # drop top/right/bottom; keep team names
+    ax.tick_params(axis="both", length=0)  # no tick marks
+    ax.set_yticklabels(top["team"], fontsize=10)
+
+    # title + subtitle, left-aligned (editorial style)
+    ax.set_title("Who wins the 2026 World Cup?",
+                 fontsize=16, weight="bold", loc="left", pad=26)
+    ax.text(0, 1.015, "Model probability of lifting the trophy, top 16 teams",
+            transform=ax.transAxes, fontsize=10, color=_GREY)
+    ax.set_xlabel("P(win the World Cup)  [%]", fontsize=10, color=_GREY)
+    ax.margins(x=0.12, y=0.01)
+
+    # legend: borderless, below the plot, horizontal
+    seen = sorted({CONFEDERATIONS.get(t) for t in top["team"]} - {None})
+    handles = [plt.Rectangle((0, 0), 1, 1, color=CONF_COLORS[c]) for c in seen]
+    leg = ax.legend(handles, seen, fontsize=8.5, ncol=len(seen),
+                    loc="upper center", bbox_to_anchor=(0.5, -0.07),
+                    frameon=False, handlelength=1.0, columnspacing=1.4,
+                    title="Confederation")
+    leg.get_title().set_fontsize(8.5)
+    leg.get_title().set_color(_GREY)
+
     fig.tight_layout()
     path = _figdir(outdir) / "title_race.png"
-    fig.savefig(path, dpi=130, bbox_inches="tight")
+    fig.savefig(path, dpi=200, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     return path
 

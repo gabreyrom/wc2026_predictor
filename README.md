@@ -42,7 +42,7 @@ On matches from 2022 onward, held out as a test set that no part of the model sa
 
 **Who's favored to win**
 
-![Horizontal bar chart of each team's probability of winning the 2026 World Cup, ranked highest to lowest](results/2026-06-18/figures/title_race.png)
+![Horizontal bar chart of each team's probability of winning the 2026 World Cup, ranked highest to lowest](results/2026-06-24/figures/title_race.png)
 
 The headline output. Each bar is a team's probability of lifting the trophy, counted over 100,000 simulated tournaments. With 48 teams in the field the title is wide open, so even the favorite sits well below 20% and the chasing pack stays tightly bunched.
 
