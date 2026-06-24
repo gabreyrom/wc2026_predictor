@@ -500,7 +500,9 @@ def run_simulations(
     rows = []
     for team in all_teams:
         row = {"team": team}
-        for r in ROUND_ORDER:
+        # Skip "Group" (ROUND_ORDER[0]) — P(reach group stage) is trivially 1
+        # for every team; it's only needed internally as the default state.
+        for r in ROUND_ORDER[1:]:
             row[r] = round_counts[team][r] / n
         row["top2"] = top2_counts.get(team, 0) / n   # group top-2 (no 3rd route)
         rows.append(row)

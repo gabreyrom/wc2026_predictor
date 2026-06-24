@@ -374,6 +374,78 @@ def plot_match_heatmap(model, team_i: str, team_j: str, outdir, max_goals: int =
     return path
 
 
+# ── 8. Prediction evolution across matchdays ──────────────────────────────────
+
+def _load_snapshots(results_root) -> pd.DataFrame | None:
+    """Stack every results/<date>/tournament_probs.csv into one long frame."""
+    frames = []
+    for d in sorted(Path(results_root).iterdir()):
+        f = d / "tournament_probs.csv"
+        if d.is_dir() and f.exists():
+            df = pd.read_csv(f)
+            df["date"] = pd.Timestamp(d.name)
+            frames.append(df)
+    return pd.concat(frames, ignore_index=True) if frames else None
+
+
+def _plot_evolution(snaps, outdir, metric, teams, title, ylabel, fname) -> Path:
+    wide = (snaps[snaps["team"].isin(teams)]
+            .pivot_table(index="date", columns="team", values=metric)
+            .sort_index())
+
+    fig, ax = plt.subplots(figsize=(11, 7))
+    cmap = plt.get_cmap("tab20")
+    for i, team in enumerate(teams):
+        if team not in wide.columns:
+            continue
+        s = wide[team]
+        ax.plot(s.index, s.values * 100, marker="o", ms=4, lw=1.8,
+                color=cmap(i % 20))
+        # label at the rightmost point
+        last = s.dropna()
+        if len(last):
+            ax.annotate(f" {team}", (last.index[-1], last.values[-1] * 100),
+                        fontsize=8, va="center", color=cmap(i % 20))
+
+    ax.set_ylabel(ylabel, fontsize=11)
+    ax.set_title(title, fontsize=13, weight="bold")
+    ax.margins(x=0.18)
+    ax.grid(True, alpha=0.25)
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    path = _figdir(outdir) / fname
+    fig.savefig(path, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def plot_evolution_title_race(results_root, outdir, n: int = 8) -> Path | None:
+    """P(win the tournament) over time for the current top-n favorites."""
+    snaps = _load_snapshots(results_root)
+    if snaps is None or snaps["date"].nunique() < 2:
+        return None
+    latest = snaps[snaps["date"] == snaps["date"].max()]
+    teams = latest.nlargest(n, "Winner")["team"].tolist()
+    return _plot_evolution(
+        snaps, outdir, "Winner", teams,
+        "Title race — P(win the World Cup) over time", "P(win)  [%]",
+        "evolution_title_race.png")
+
+
+def plot_evolution_bubble(results_root, outdir, n: int = 10) -> Path | None:
+    """P(reach R16) over time for the teams whose fate moved the most."""
+    snaps = _load_snapshots(results_root)
+    if snaps is None or snaps["date"].nunique() < 2:
+        return None
+    swing = (snaps.groupby("team")["R16"].agg(lambda s: s.max() - s.min())
+             .sort_values(ascending=False))
+    teams = swing.head(n).index.tolist()
+    return _plot_evolution(
+        snaps, outdir, "R16", teams,
+        "Bubble watch — P(reach Round of 16), biggest movers", "P(reach R16)  [%]",
+        "evolution_bubble.png")
+
+
 # ── Driver ─────────────────────────────────────────────────────────────────────
 
 def generate_all(
@@ -400,6 +472,14 @@ def generate_all(
 
     if calibrator is not None and test_pred_df is not None and not test_pred_df.empty:
         made.append(plot_calibration_curve(test_pred_df, calibrator, outdir))
+
+    # Evolution charts — need ≥2 daily snapshots; skip silently otherwise.
+    # The results root is two levels up from the figures dir (results/<date>/figures).
+    results_root = Path(outdir).parent.parent
+    for fn in (plot_evolution_title_race, plot_evolution_bubble):
+        p = fn(results_root, outdir)
+        if p is not None:
+            made.append(p)
 
     # Match heatmap only when one is explicitly requested (no default favorite).
     # The --match path in main.py generates its own heatmap directly.

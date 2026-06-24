@@ -4,13 +4,12 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="Refactor K-factor calculation for Elo ratings; implement confederation-aware logic for match types">
+    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="Add match scoring probabilities calculation; implement saving logic for match scoring data">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/processed/wc2026_probs.csv" beforeDir="false" afterPath="$PROJECT_DIR$/data/processed/wc2026_probs.csv" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/data/wc2026_results.csv" beforeDir="false" afterPath="$PROJECT_DIR$/data/wc2026_results.csv" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/output/results.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/output/results.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/output/visualize.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/output/visualize.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/simulation/monte_carlo.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/simulation/monte_carlo.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -23,7 +22,7 @@
     </persistenceIdMap>
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="10" />
+    <option name="cachedIndexableFilesCount" value="87" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="Git.Settings">
@@ -92,7 +91,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1781040041722</updated>
-      <workItem from="1781040042735" duration="59902000" />
+      <workItem from="1781040042735" duration="66460000" />
     </task>
     <task id="LOCAL-00001" summary="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure.">
       <option name="closed" value="true" />
@@ -238,7 +237,15 @@
       <option name="project" value="LOCAL" />
       <updated>1781367613520</updated>
     </task>
-    <option name="localTasksCounter" value="19" />
+    <task id="LOCAL-00019" summary="Add match scoring probabilities calculation; implement saving logic for match scoring data">
+      <option name="closed" value="true" />
+      <created>1781817591023</created>
+      <option name="number" value="00019" />
+      <option name="presentableId" value="LOCAL-00019" />
+      <option name="project" value="LOCAL" />
+      <updated>1781817591023</updated>
+    </task>
+    <option name="localTasksCounter" value="20" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -261,7 +268,8 @@
     <MESSAGE value="Add log_value_ratio feature for team comparisons; implement market value data fetching and caching" />
     <MESSAGE value="Add elo_diff feature for team comparisons; implement match results conditioning and update tournament simulation logic" />
     <MESSAGE value="Refactor K-factor calculation for Elo ratings; implement confederation-aware logic for match types" />
-    <option name="LAST_COMMIT_MESSAGE" value="Refactor K-factor calculation for Elo ratings; implement confederation-aware logic for match types" />
+    <MESSAGE value="Add match scoring probabilities calculation; implement saving logic for match scoring data" />
+    <option name="LAST_COMMIT_MESSAGE" value="Add match scoring probabilities calculation; implement saving logic for match scoring data" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

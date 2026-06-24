@@ -97,6 +97,21 @@ python main.py --plots --load-calibrator
 
 Run a **full** `python main.py --plots` only when the underlying data changes (e.g. after `--force-download`) — that refreshes the validation scorecard and the calibration-curve figure.
 
+### Evaluating accuracy against real results
+
+`evaluate.py` scores a prediction snapshot against the actual outcomes in `data/wc2026_results.csv` (aligning home/away orientation automatically):
+
+```bash
+python evaluate.py            # earliest snapshot (the pre-tournament baseline)
+python evaluate.py 2026-06-18 # any specific day
+```
+
+Reports two scorecards:
+- **Match-level** (always): exact-scoreline hit rate (most probable result), top-5 scoreline hit rate, outcome accuracy (raw and calibrated), mean log-loss and Brier score vs the coin-flip baseline, and an outcome confusion matrix.
+- **Tournament-level** (activates once all 72 group matches are entered): scores the pre-tournament `P(reach R32)` against who actually qualified — top-32 overlap, qualification Brier/log-loss, and the biggest surprises.
+
+Re-run it as more matches are played to grow the sample.
+
 ---
 
 ## Pipeline
@@ -183,6 +198,7 @@ Each run writes that day's complete output set (same-day reruns overwrite in pla
 wc2026_predictor/
 │
 ├── main.py                        # Full pipeline entry point
+├── evaluate.py                    # Score predictions vs results → evaluations/*.md
 │
 ├── tournament/
 │   └── wc2026_draw.py             # Official groups A–L, hosts, aliases
@@ -217,6 +233,7 @@ wc2026_predictor/
 │
 ├── data/                          # Inputs (market values, teams, live results)
 ├── results/                       # One folder per day of predictions
+├── evaluations/                   # eval_<date>.md — scored against real results
 └── models/                        # Saved calibrator
 ```
 
@@ -373,6 +390,18 @@ Each column is P(team reaches at least that round). Columns don't sum to 100% �
 
 Quote the **calibrated** probabilities as your point estimate, use the **CI** to communicate confidence, and read the **scorelines** for how the match actually plays out.
 
+### Evaluation scorecard (`evaluate.py` → `evaluations/eval_<date>.md`)
+
+`python evaluate.py [date]` scores a snapshot's predictions against the actual results and writes a markdown report to `evaluations/`. Two scorecards:
+
+**Match-level** (live as soon as matches are played):
+- **Exact scoreline** — the single most-likely scoreline was exactly right. Expect ~8–12% even for a perfect model; exact scores are inherently hard.
+- **Top-5 scoreline** — the actual score was among the 5 most likely.
+- **Outcome accuracy** — the highest-probability W/D/L was correct. Watch this *alongside* the confusion matrix: the calibrated model rarely picks "draw" as its single most likely outcome (the documented draw-recall trade-off), so in a draw-heavy stretch this number understates how well it picked winners.
+- **Log-loss / Brier** — the *honest* probabilistic scores (they reward good probabilities, not just the argmax). Compare to the coin-flip baseline (log-loss 1.099); ~0.92 is roughly 16% better than random and the number to trust over raw accuracy.
+
+**Tournament-level** (auto-activates once all 72 group matches are entered): scores the pre-tournament `P(reach R32)` against who actually qualified — top-32 overlap, qualification Brier/log-loss, and the biggest surprises in both directions.
+
 ---
 
 ## What the Model Simplifies
@@ -424,7 +453,7 @@ Every model simplifies; the important thing is knowing what and why. In rough or
 
 ## Visualizations
 
-`python main.py --plots` renders six tournament-level figures into `results/<date>/figures/`:
+`python main.py --plots` renders the tournament-level figures into `results/<date>/figures/`:
 
 | Figure | What it shows |
 |---|---|
@@ -434,9 +463,11 @@ Every model simplifies; the important thing is knowing what and why. In rough or
 | `attack_defense` | Team-strength map: α (attack) vs β (defense), colored by confederation |
 | `strength_vs_value` | Model P(win) vs squad market value — who the model rates above/below their price |
 | `calibration_curve` | Reliability diagram (DC vs DC+LGBM vs perfect) — the honesty check |
+| `evolution_title_race` | P(win) over time for the current favorites — the title race as a fan-chart |
+| `evolution_bubble` | P(reach R16) over time for the biggest movers — group-stage drama |
 
-A seventh, **per-match scoreline heatmap**, is produced on demand by `--match A B` (saved as `match_<A>_vs_<B>.png`) — not on a plain `--plots` run.
+The two **evolution** charts need ≥2 daily snapshots (they read every `results/<date>/tournament_probs.csv`), so they appear once the tournament is underway and grow richer each matchday.
+
+An additional **per-match scoreline heatmap** is produced on demand by `--match A B` (saved as `match_<A>_vs_<B>.png`) — not on a plain `--plots` run.
 
 **Browsing the output:** [`notebooks/wc_eda.ipynb`](notebooks/wc_eda.ipynb) auto-loads the most recent snapshot and displays the scorelines table plus every figure for that day, one per cell. Re-run it after each `main.py` run. (Needs Jupyter: `pip install jupyterlab`.)
-
-*Planned next:* prediction-evolution chart — P(advance) per team across matchdays, fed by the accumulating daily snapshots.
