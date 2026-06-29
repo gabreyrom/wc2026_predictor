@@ -245,47 +245,55 @@ def save_match_scorelines(
     For every known fixture, compute the top-N most probable scorelines and
     save them to a date-stamped CSV in `results_dir`.
 
-    Covers the 72 group-stage fixtures (the only matches whose pairings are
-    known before the tournament). Knockout fixtures can be appended once the
-    real R32 pairings exist.
+    Covers the 72 group-stage fixtures plus any KNOCKOUT fixtures already
+    listed in data/wc2026_results.csv (e.g. the R32 pairings once the group
+    stage resolves). For knockout rows, `score`/`prob` describe the
+    90-minute scoreline distribution (the match would go to extra time /
+    penalties on a draw).
 
     Output columns:
         stage, group, home_team, away_team,
         p_home, p_draw, p_away          — outcome probs (4 decimals)
         rank, score, prob               — one row per (match, rank)
     """
-    from datetime import date
-    from pathlib import Path
     from itertools import combinations
     from src.simulation.group_stage import host_flags
+    from src.data.wc_results import load_knockout_fixtures
+
+    def _match_rows(stage, group_name, home, away):
+        h_i, h_j = host_flags(home, away)
+        pred = model.predict(home, away, match_importance=1.0,
+                             home_i=h_i, home_j=h_j)
+        mat = pred["score_matrix"]
+        n = mat.shape[0]
+        out = []
+        for rank, idx in enumerate(np.argsort(mat.ravel())[::-1][:top_n], 1):
+            hg, ag = divmod(int(idx), n)
+            out.append({
+                "stage":     stage,
+                "group":     group_name,
+                "home_team": home,
+                "away_team": away,
+                "p_home":    round(pred["home"], 4),
+                "p_draw":    round(pred["draw"], 4),
+                "p_away":    round(pred["away"], 4),
+                "rank":      rank,
+                "score":     f"{hg}-{ag}",
+                "prob":      round(float(mat[hg, ag]), 4),
+            })
+        return out
 
     rows = []
+    # Group fixtures (all 72)
     for group_name in sorted(groups):
-        teams = groups[group_name]
-        for home, away in combinations(teams, 2):
-            if home not in model.alpha or away not in model.alpha:
-                continue
-            h_i, h_j = host_flags(home, away)
-            pred = model.predict(home, away, match_importance=1.0,
-                                 home_i=h_i, home_j=h_j)
-            mat = pred["score_matrix"]
-            n = mat.shape[0]
-            flat_idx = np.argsort(mat.ravel())[::-1][:top_n]
+        for home, away in combinations(groups[group_name], 2):
+            if home in model.alpha and away in model.alpha:
+                rows += _match_rows("group", group_name, home, away)
 
-            for rank, idx in enumerate(flat_idx, 1):
-                hg, ag = divmod(int(idx), n)
-                rows.append({
-                    "stage":     "group",
-                    "group":     group_name,
-                    "home_team": home,
-                    "away_team": away,
-                    "p_home":    round(pred["home"], 4),
-                    "p_draw":    round(pred["draw"], 4),
-                    "p_away":    round(pred["away"], 4),
-                    "rank":      rank,
-                    "score":     f"{hg}-{ag}",
-                    "prob":      round(float(mat[hg, ag]), 4),
-                })
+    # Known knockout fixtures from the results file (R32 onward)
+    for stage, home, away in load_knockout_fixtures():
+        if home in model.alpha and away in model.alpha:
+            rows += _match_rows(stage, "", home, away)
 
     df = pd.DataFrame(rows)
     path = _daily_dir(results_dir) / "match_scorelines.csv"

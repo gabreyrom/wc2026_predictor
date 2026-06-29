@@ -228,6 +228,65 @@ def build_r32_bracket(
     return bracket
 
 
+def actual_r32_bracket(groups: dict[str, list[str]]) -> list[str] | None:
+    """
+    Build the R32 bracket from the ACTUAL fixtures in data/wc2026_results.csv,
+    using FIFA's real third-place slot assignment rather than the model's
+    solver. The fixed slots (two group positions, e.g. 2A vs 2B) are resolved
+    from the real group standings; the eight 1st-place-vs-3rd slots take their
+    third-placed opponent from whichever real R32 fixture contains that group
+    winner.
+
+    Returns the 32-team list in official bracket order, or None if the group
+    stage isn't complete, the 16 R32 fixtures aren't all listed, or the result
+    can't be reconciled with the listed fixtures (in which case the caller
+    falls back to the model's computed bracket).
+    """
+    import pandas as pd
+    from src.simulation.group_stage import compute_standings
+    from src.data.wc_results import _RESULTS_PATH, load_knockout_fixtures
+
+    df = pd.read_csv(_RESULTS_PATH)
+    gp = df[(df["played"] == 1) & (df["stage"] == "group")]
+    if len(gp) < 72:
+        return None
+
+    # Position code ("1A", "2A", "3A", "4A") → team, from real standings
+    pos: dict[str, str] = {}
+    for g, teams in groups.items():
+        sub = gp[gp["group"] == g]
+        results = {(r.home_team, r.away_team): (int(r.home_score), int(r.away_score))
+                   for r in sub.itertuples()}
+        for i, t in enumerate(compute_standings(teams, results)):
+            pos[f"{i + 1}{g}"] = t
+
+    fixtures = [frozenset({h, a}) for s, h, a in load_knockout_fixtures()
+                if s == "R32"]
+    if len(fixtures) < 16:
+        return None
+
+    bracket: list[str] = []
+    for m in R32_MATCH_ORDER:
+        ch, ca = R32_FIXED[m]
+        if ch is not None and ca is not None:          # fixed two-position slot
+            home, away = pos.get(ch), pos.get(ca)
+        else:                                          # 1st place vs a 3rd place
+            fixed_code = ch if ch is not None else ca
+            winner = pos.get(fixed_code)
+            third = next((next(iter(fx - {winner})) for fx in fixtures
+                          if winner in fx), None)
+            home, away = (winner, third) if ch is not None else (third, winner)
+        if not home or not away:
+            return None
+        bracket += [home, away]
+
+    # Reconcile with the listed fixtures; bail to the computed bracket if off
+    built = {frozenset({bracket[i], bracket[i + 1]}) for i in range(0, 32, 2)}
+    if built != set(fixtures):
+        return None
+    return bracket
+
+
 # ── Single match sampler ─────────────────────────────────────────────────────
 
 def sample_match(
@@ -354,9 +413,13 @@ def simulate_tournament(
     top2_counts: dict | None = None,
     fixed_results: dict | None = None,
     ko_winners: dict | None = None,
+    fixed_r32: list[str] | None = None,
 ) -> dict[str, str]:
     """
     Simulate one full World Cup tournament.
+
+    If fixed_r32 (a 32-team bracket list) is given, it overrides the computed
+    bracket so the knockout follows the real draw.
 
     Returns:
         round_reached : {team: last_round_reached}
@@ -396,9 +459,13 @@ def simulate_tournament(
     for entry in best_thirds:
         round_reached[entry["team"]] = "R32"
 
-    # ── Build R32 bracket (official FIFA 2026 structure) ─────────────────────
-    remaining = build_r32_bracket(qualifiers_by_group, best_thirds)
+    # ── Build R32 bracket ────────────────────────────────────────────────────
+    # Use the real draw when it's known; otherwise the model's computed bracket.
+    remaining = fixed_r32 if fixed_r32 is not None \
+        else build_r32_bracket(qualifiers_by_group, best_thirds)
     assert len(remaining) == 32
+    for t in remaining:                 # the 32 bracket teams reached the R32
+        round_reached[t] = "R32"
 
     # ── Knockout rounds ───────────────────────────────────────────────────────
     # 5 rounds: 32 → 16 → 8 → 4 → 2 → champion.
@@ -480,9 +547,14 @@ def run_simulations(
     pairing_counts: dict = {} if return_pairings else None
     top2_counts: dict = {}
 
+    # Use the real R32 draw once it's known (overrides the model's bracket so
+    # the knockout — and thus every advancement probability — matches reality).
+    fixed_r32 = actual_r32_bracket(groups)
+
     if fixed_results or ko_winners:
         print(f"  Conditioning on {len(fixed_results or {})} played group "
-              f"matches and {len(ko_winners or {})} knockout results")
+              f"matches and {len(ko_winners or {})} knockout results"
+              f"{'; using the real R32 draw' if fixed_r32 else ''}")
 
     print(f"  Running {n:,} simulations...")
     for _ in tqdm(range(n), unit="sim"):
@@ -490,7 +562,8 @@ def run_simulations(
                                       pairing_counts=pairing_counts,
                                       top2_counts=top2_counts,
                                       fixed_results=fixed_results,
-                                      ko_winners=ko_winners)
+                                      ko_winners=ko_winners,
+                                      fixed_r32=fixed_r32)
         for team, last_round in results.items():
             idx = ROUND_ORDER.index(last_round)
             # A team "reached" all rounds up to and including last_round

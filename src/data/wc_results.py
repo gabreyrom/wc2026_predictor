@@ -82,3 +82,17 @@ def lookup_group_result(group_results: dict, home: str, away: str):
         return None
     g_a, g_b, team_a = rec
     return (g_a, g_b) if team_a == home else (g_b, g_a)
+
+
+def load_knockout_fixtures(path: str | Path = _RESULTS_PATH) -> list[tuple[str, str, str]]:
+    """
+    Return [(stage, home_team, away_team), ...] for every knockout fixture
+    listed in the results file — played or not — in file order. Used to
+    generate per-match predictions for the actual bracket once it's known.
+    """
+    path = Path(path)
+    if not path.exists():
+        return []
+    df = pd.read_csv(path)
+    ko = df[df["stage"].isin(KO_STAGES)]
+    return [(r["stage"], r["home_team"], r["away_team"]) for _, r in ko.iterrows()]

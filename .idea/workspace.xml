@@ -4,13 +4,21 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="Update prediction accuracy snapshots and improve visualization styles">
+    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="Add group position probabilities and enhance evaluation reporting">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/data/processed/wc2026_probs.csv" beforeDir="false" afterPath="$PROJECT_DIR$/data/processed/wc2026_probs.csv" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/data/wc2026_results.csv" beforeDir="false" afterPath="$PROJECT_DIR$/data/wc2026_results.csv" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/evaluate.py" beforeDir="false" afterPath="$PROJECT_DIR$/evaluate.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/evaluations/eval_2026-06-11.md" beforeDir="false" afterPath="$PROJECT_DIR$/evaluations/eval_2026-06-11.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/2026-06-29/figures/bracket.png" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-29/figures/bracket.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/2026-06-29/figures/evolution_bubble.png" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-29/figures/evolution_bubble.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/2026-06-29/figures/evolution_title_race.png" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-29/figures/evolution_title_race.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/2026-06-29/figures/strength_vs_value.png" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-29/figures/strength_vs_value.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/2026-06-29/figures/title_race.png" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-29/figures/title_race.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/2026-06-29/match_probabilities.csv" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-29/match_probabilities.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/2026-06-29/match_scorelines.csv" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-29/match_scorelines.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/2026-06-29/tournament_probs.csv" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-29/tournament_probs.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/data/wc_results.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/data/wc_results.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/output/results.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/output/results.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/simulation/monte_carlo.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/simulation/monte_carlo.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -92,7 +100,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1781040041722</updated>
-      <workItem from="1781040042735" duration="76427000" />
+      <workItem from="1781040042735" duration="79267000" />
     </task>
     <task id="LOCAL-00001" summary="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure.">
       <option name="closed" value="true" />
@@ -286,7 +294,15 @@
       <option name="project" value="LOCAL" />
       <updated>1782345411524</updated>
     </task>
-    <option name="localTasksCounter" value="25" />
+    <task id="LOCAL-00025" summary="Add group position probabilities and enhance evaluation reporting">
+      <option name="closed" value="true" />
+      <created>1782759020711</created>
+      <option name="number" value="00025" />
+      <option name="presentableId" value="LOCAL-00025" />
+      <option name="project" value="LOCAL" />
+      <updated>1782759020711</updated>
+    </task>
+    <option name="localTasksCounter" value="26" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -312,7 +328,8 @@
     <MESSAGE value="Add match scoring probabilities calculation; implement saving logic for match scoring data" />
     <MESSAGE value="Add prediction evolution charts; implement loading and plotting of tournament snapshots" />
     <MESSAGE value="Update prediction accuracy snapshots and improve visualization styles" />
-    <option name="LAST_COMMIT_MESSAGE" value="Update prediction accuracy snapshots and improve visualization styles" />
+    <MESSAGE value="Add group position probabilities and enhance evaluation reporting" />
+    <option name="LAST_COMMIT_MESSAGE" value="Add group position probabilities and enhance evaluation reporting" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

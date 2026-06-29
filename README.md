@@ -363,7 +363,7 @@ The LightGBM decides *who wins*, and Dixon-Coles decides *by how much*. That kee
 
 ### 9. Official FIFA 2026 bracket
 
-All 16 Round-of-32 matches are hard-coded from the official schedule and wired so winners flow through the real R16 → QF → SF → Final tree. Third-place allocation is officially a 495-row lookup table; here it's implemented as the rule that generates that table (a constrained matching) and verified against all 495 combinations. Bracket position carries real signal: a group winner that lands in a stacked quarter pays for it in title probability.
+All 16 Round-of-32 matches are hard-coded from the official schedule and wired so winners flow through the real R16 → QF → SF → Final tree. Third-place allocation is officially a 495-row lookup table; here it's implemented as the rule that generates that table (a constrained matching) and verified against all 495 combinations. Bracket position carries real signal: a group winner that lands in a stacked quarter pays for it in title probability. This matcher is what produces the *pre-tournament* bracket; once the real Round-of-32 draw is entered in `data/wc2026_results.csv`, the simulation uses FIFA's actual pairings instead.
 
 ### 10. Extra time and penalties
 
@@ -440,7 +440,7 @@ The widest file. It carries the raw Dixon-Coles probabilities, their 90% confide
 - `ci_*_lo`, `ci_*_hi` — 90% confidence interval for each outcome
 - `cal_home`, `cal_draw`, `cal_away` — calibrated probabilities
 
-Group rows are simple: one per fixture, `p_pairing = 1`, with the group filled in. Knockout rows work differently. The bracket isn't drawn yet, so each slot lists its three most likely pairings, and the outcome probabilities on those rows are conditional on that pairing actually happening. Don't multiply `p_pairing` into the outcome columns expecting a clean marginal, since the two answer different questions.
+Group rows are simple: one per fixture, `p_pairing = 1`, with the group filled in. Knockout rows work differently. While the bracket is still uncertain, each slot lists its three most likely pairings, and the outcome probabilities on those rows are conditional on that pairing actually happening — so don't multiply `p_pairing` into the outcome columns expecting a clean marginal, since the two answer different questions. Once the real Round-of-32 draw is entered in `data/wc2026_results.csv`, the simulation switches to it: the R32 rows collapse to the actual pairings (`p_pairing = 1`), and the deeper rounds list only the pairings the real draw can still produce.
 
 Sample trimmed to stage, teams, pairing, and the calibrated columns (the raw `p_*` and `ci_*` columns are omitted here for width):
 
@@ -453,7 +453,7 @@ R32,73,,South Korea,Switzerland,0.161,0.236,0.268,0.496
 
 ### `match_scorelines.csv` — most likely exact scores
 
-Group fixtures only, since knockout pairings aren't known in advance. Each fixture gets five rows: its five most likely exact scorelines, ranked by probability. The `p_home`/`p_draw`/`p_away` columns repeat the fixture's overall result probabilities on every row for context.
+All 72 group fixtures, plus any knockout fixtures already listed in `data/wc2026_results.csv` (the R32 pairings appear here automatically once the group stage resolves). Each fixture gets five rows: its five most likely exact scorelines, ranked by probability. The `p_home`/`p_draw`/`p_away` columns repeat the fixture's overall result probabilities on every row for context. For knockout fixtures these are the 90-minute numbers — a draw there would go to extra time or penalties.
 
 - `stage`, `group`, `home_team`, `away_team`
 - `p_home`, `p_draw`, `p_away` — overall outcome probabilities for the fixture
@@ -526,7 +526,7 @@ Every model trades some realism for tractability. Here's what this one assumes, 
 - **Group-table tiebreakers use a shortcut.** The "exact" group tables break ties on expected goals rather than every possible scoreline, and skip head-to-head. The measured cost is up to about 6pp on a team's top-2 probability. The Monte Carlo handles tiebreakers properly and drives every headline number; the shortcut only feeds the display tables.
 - **Parameters are frozen during the tournament.** Played matches update the simulation through conditioning, but the α/β strengths stay at the pre-tournament fit. A handful of matches barely moves them, and freezing keeps the daily snapshots comparable.
 - **Penalties are a coin flip.** Extra time is modeled at reduced scoring rates, but the shootout is a 50/50, which the literature supports.
-- **Third-place assignment picks one valid option.** Where FIFA's table might choose another arrangement among equals, the model picks one, and who-can-meet-whom is always respected.
+- **Third-place assignment picks one valid option** *(pre-knockout only)*. Before the bracket is set, where FIFA's table might choose another arrangement among equals the model picks one, and who-can-meet-whom is always respected. Once the real Round-of-32 fixtures are entered in `data/wc2026_results.csv`, the simulation uses FIFA's actual draw instead, so this no longer applies.
 - **Pre-2013 matches reuse the 2013 value snapshot.** No older Transfermarkt data exists, but the calibrator only trains on predictions from 2016 onward, so these fall outside its window entirely.
 
 ### Main constraints
