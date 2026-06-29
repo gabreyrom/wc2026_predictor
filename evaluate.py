@@ -220,6 +220,63 @@ def evaluate_qualification(snapshot: str) -> str:
     return "\n".join(L)
 
 
+def evaluate_group_positions(snapshot: str) -> str:
+    """
+    Return a markdown scorecard for the predicted final group standings
+    (group_position_probs.csv) against the actual finishing positions.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from tournament.wc2026_draw import GROUPS
+    from src.simulation.group_stage import compute_standings
+
+    df = pd.read_csv(ACTUALS)
+    played = df[(df["played"] == 1) & (df["stage"] == "group")]
+    L = ["## Group-position accuracy\n"]
+    if len(played) < 72:
+        L.append(f"Group stage in progress ({len(played)}/72 played).")
+        return "\n".join(L)
+
+    # Actual finishing order per group [1st, 2nd, 3rd, 4th]
+    actual = {}
+    for g, teams in GROUPS.items():
+        gp = played[played["group"] == g]
+        results = {(r.home_team, r.away_team): (int(r.home_score), int(r.away_score))
+                   for r in gp.itertuples()}
+        actual[g] = compute_standings(teams, results)
+
+    gpp = pd.read_csv(RESULTS_DIR / snapshot / "group_position_probs.csv")
+    cols = ["p_1st", "p_2nd", "p_3rd", "p_4th"]
+
+    winners_ok = top2_overlap = exact_order = modal_ok = n_teams = 0
+    pos_ll = pos_brier = 0.0
+    for g, order in actual.items():
+        sub = gpp[gpp["group"] == g].set_index("team")
+        exp_pos = {t: sum((i + 1) * sub.loc[t, c] for i, c in enumerate(cols))
+                   for t in order}
+        pred_order = sorted(order, key=lambda t: exp_pos[t])
+        winners_ok += pred_order[0] == order[0]
+        top2_overlap += len(set(pred_order[:2]) & set(order[:2]))
+        exact_order += pred_order == order
+        for pos, team in enumerate(order, 1):           # actual position 1–4
+            probs = [float(sub.loc[team, c]) for c in cols]
+            modal_ok += (probs.index(max(probs)) + 1) == pos
+            pos_ll += -math.log(max(probs[pos - 1], 1e-9))
+            pos_brier += sum((probs[i] - (1.0 if i + 1 == pos else 0.0)) ** 2
+                             for i in range(4))
+            n_teams += 1
+
+    L.append("| Metric | Result |")
+    L.append("|---|---|")
+    L.append(f"| Group winners correct | {winners_ok}/12 |")
+    L.append(f"| Top-2 qualifiers correct | {top2_overlap}/24 |")
+    L.append(f"| Exact group order (all four right) | {exact_order}/12 |")
+    L.append(f"| Modal position correct (per team) | {modal_ok}/{n_teams} ({modal_ok/n_teams:.1%}) |")
+    L.append(f"| Position log-loss | {pos_ll/n_teams:.4f} |")
+    L.append(f"| Position Brier | {pos_brier/n_teams:.4f} |")
+    L.append(f"\n*Uniform 1/4 baseline: log-loss {math.log(4):.3f}, Brier 0.750.*")
+    return "\n".join(L)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         snapshot = sys.argv[1]
@@ -227,7 +284,11 @@ if __name__ == "__main__":
         snaps = sorted(d.name for d in RESULTS_DIR.iterdir() if d.is_dir())
         snapshot = snaps[0]   # earliest = pre-tournament baseline
 
-    report = evaluate(snapshot) + "\n\n" + evaluate_qualification(snapshot) + "\n"
+    report = "\n\n".join([
+        evaluate(snapshot),
+        evaluate_group_positions(snapshot),
+        evaluate_qualification(snapshot),
+    ]) + "\n"
     print(report)
 
     out_dir = Path("evaluations")

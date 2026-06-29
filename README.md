@@ -506,11 +506,13 @@ To browse a run, [`notebooks/wc_eda.ipynb`](notebooks/wc_eda.ipynb) auto-loads t
 
 ### Scoring against results (`evaluate.py`)
 
-Once matches are played, `python evaluate.py [date]` grades a snapshot's predictions against the real outcomes in `data/wc2026_results.csv` (aligning home/away orientation automatically) and writes a markdown report to `evaluations/eval_<date>.md`. With no date it scores the earliest, pre-tournament snapshot. It produces two scorecards.
+Once matches are played, `python evaluate.py [date]` grades a snapshot's predictions against the real outcomes in `data/wc2026_results.csv` (aligning home/away orientation automatically) and writes a markdown report to `evaluations/eval_<date>.md`. With no date it scores the earliest, pre-tournament snapshot. It produces three scorecards.
 
 **Match-level** (live as soon as any matches are played): the exact-scoreline hit rate (how often the single most likely score was right), the top-5 scoreline hit rate, outcome accuracy for both the raw and calibrated models, mean log-loss and Brier score against the coin-flip baseline (1.099), and a win/draw/loss confusion matrix. Trust the log-loss over raw accuracy here: a draw is rarely the model's single top pick, so in a draw-heavy run the accuracy understates how well it actually called the winners.
 
-**Tournament-level** (activates automatically once all 72 group matches are entered): scores the pre-tournament `P(reach R32)` against who actually qualified: how many of the real 32 the model had in its top 32, the qualification Brier and log-loss, and the biggest surprises in both directions.
+**Group-position** (once all 72 group matches are entered): scores the predicted final standings — group winners called correctly, top-two qualifiers found, groups whose full 1-2-3-4 order was exactly right, plus per-team modal-position accuracy and position log-loss/Brier against a uniform 1/4 baseline.
+
+**Tournament-level** (also once the group stage is complete): scores the pre-tournament `P(reach R32)` against who actually qualified: how many of the real 32 the model had in its top 32, the qualification Brier and log-loss, and the biggest surprises in both directions.
 
 ---
 

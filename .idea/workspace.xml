@@ -4,18 +4,13 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="Add prediction evolution charts; implement loading and plotting of tournament snapshots">
+    <list default="true" id="10291888-1f14-40cd-a517-8e4769900d4d" name="Changes" comment="Update prediction accuracy snapshots and improve visualization styles">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/processed/wc2026_probs.csv" beforeDir="false" afterPath="$PROJECT_DIR$/data/processed/wc2026_probs.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/wc2026_results.csv" beforeDir="false" afterPath="$PROJECT_DIR$/data/wc2026_results.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/evaluate.py" beforeDir="false" afterPath="$PROJECT_DIR$/evaluate.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/evaluations/eval_2026-06-11.md" beforeDir="false" afterPath="$PROJECT_DIR$/evaluations/eval_2026-06-11.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/results/2026-06-24/figures/attack_defense.png" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-24/figures/attack_defense.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/results/2026-06-24/figures/bracket.png" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-24/figures/bracket.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/results/2026-06-24/figures/evolution_bubble.png" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-24/figures/evolution_bubble.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/results/2026-06-24/figures/evolution_title_race.png" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-24/figures/evolution_title_race.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/results/2026-06-24/figures/group_heatmap.png" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-24/figures/group_heatmap.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/results/2026-06-24/figures/strength_vs_value.png" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-24/figures/strength_vs_value.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/results/2026-06-24/figures/title_race.png" beforeDir="false" afterPath="$PROJECT_DIR$/results/2026-06-24/figures/title_race.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/output/visualize.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/output/visualize.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -28,7 +23,7 @@
     </persistenceIdMap>
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="87" />
+    <option name="cachedIndexableFilesCount" value="102" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="Git.Settings">
@@ -97,7 +92,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1781040041722</updated>
-      <workItem from="1781040042735" duration="73336000" />
+      <workItem from="1781040042735" duration="76427000" />
     </task>
     <task id="LOCAL-00001" summary="First commit to the repo.&#10;&#10;Here the overall structure of the project is laid out and the first code structure.">
       <option name="closed" value="true" />
@@ -283,7 +278,15 @@
       <option name="project" value="LOCAL" />
       <updated>1782276649141</updated>
     </task>
-    <option name="localTasksCounter" value="24" />
+    <task id="LOCAL-00024" summary="Update prediction accuracy snapshots and improve visualization styles">
+      <option name="closed" value="true" />
+      <created>1782345411524</created>
+      <option name="number" value="00024" />
+      <option name="presentableId" value="LOCAL-00024" />
+      <option name="project" value="LOCAL" />
+      <updated>1782345411524</updated>
+    </task>
+    <option name="localTasksCounter" value="25" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -308,7 +311,8 @@
     <MESSAGE value="Refactor K-factor calculation for Elo ratings; implement confederation-aware logic for match types" />
     <MESSAGE value="Add match scoring probabilities calculation; implement saving logic for match scoring data" />
     <MESSAGE value="Add prediction evolution charts; implement loading and plotting of tournament snapshots" />
-    <option name="LAST_COMMIT_MESSAGE" value="Add prediction evolution charts; implement loading and plotting of tournament snapshots" />
+    <MESSAGE value="Update prediction accuracy snapshots and improve visualization styles" />
+    <option name="LAST_COMMIT_MESSAGE" value="Update prediction accuracy snapshots and improve visualization styles" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
